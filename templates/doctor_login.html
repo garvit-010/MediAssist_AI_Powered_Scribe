@@ -38,16 +38,15 @@
         .btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(123, 31, 162, 0.3); }
         .back-link { text-align: center; margin-top: 1.5rem; }
         .back-link a { color: #7b1fa2; text-decoration: none; font-weight: 500; }
-
-        /* NEW: Register Link Style */
-        .register-link {
-            text-align: center;
+        .demo-creds {
+            background: #fdf4ff;
+            border: 1px solid #e879f9;
+            border-radius: 8px;
+            padding: 1rem;
             margin-top: 1.5rem;
-            padding-top: 1rem;
-            border-top: 1px solid #e5e7eb;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
+            color: #701a75;
         }
-        .register-link a { color: #7b1fa2; font-weight: 700; text-decoration: none; }
     </style>
 </head>
 <body>
@@ -77,9 +76,13 @@
             <button type="submit" class="btn btn-login"><i class="fas fa-sign-in-alt me-2"></i>Login</button>
         </form>
 
-        <!-- New Register Section -->
-        <div class="register-link">
-            New Provider? <a href="/register/doctor">Register Practice</a>
+        <div class="demo-creds">
+            <strong><i class="fas fa-lightbulb me-1"></i>Demo Credentials:</strong><br>
+            <small>
+                Dr. Smith: <code>dr_smith</code> / <code>smith123</code><br>
+                Dr. Patel: <code>dr_patel</code> / <code>patel123</code><br>
+                Dr. Lee: <code>dr_lee</code> / <code>lee123</code>
+            </small>
         </div>
 
         <div class="back-link">

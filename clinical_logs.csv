@@ -1,12 +1,2 @@
-timestamp,model,latency_ms,safety_pass,symptoms_snippet
-2025-12-04T15:10:24.314881,gemini-2.5-flash,28325.25,True,"cough and cold, runnign nose and headache"
-2025-12-04T15:18:14.907180,gemini-2.5-flash,20436.73,True,"Nausea, vomit and tired feeling. "
-2025-12-04T15:54:55.285800,8B285EC8,gemini-2.5-flash,13094.54,khaasi bukhar
-2025-12-04T16:24:59.943273,CD8EF40E,gemini-2.5-flash,14267.09,"cough and cold, sneezing and throat pain in drinki"
-2025-12-04T16:26:50.799581,CA8877C2,gemini-2.5-flash,16687.57,abdominal pain 
-2025-12-04T16:31:33.358698,62AF0835,gemini-2.5-flash,11894.14,cough and cold
-2025-12-04T16:36:11.438275,A30B5BBD,gemini-2.5-flash,12176.53,"Constipation, gas and acidic burps"
-2025-12-04T16:49:37.546467,E08048F4,gemini-2.5-flash,13404.29,cough and cold
-2025-12-04T16:53:57.837534,09D44FC1,gemini-2.5-flash,10578.33,"cough and cold, sneezing and throat pain"
-2025-12-04T16:59:56.923910,C82C440F,gemini-2.5-flash,16506.77,"yellow eyes, vomit, fever, stomach pain."
-2025-12-04T20:57:33.914831,45EB8501,gemini-2.5-flash,13742.03,"cough and cold,headache"
+timestamp,case_id,model,latency_ms,symptoms_snippet
+2025-12-12T10:53:43.347909,1BD1EADC,gemini-2.5-flash,17178.3,"cough and cold, stomach pain and loose motion"
