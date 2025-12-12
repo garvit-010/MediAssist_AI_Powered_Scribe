@@ -10,7 +10,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
-        /* Add minimal styling for required fields display */
         .req { color: var(--color-danger); font-weight: bold; }
     </style>
 </head>
@@ -23,7 +22,7 @@
             <i class="fas fa-heartbeat"></i>
             <span>MediAssist <small class="text-muted">Check-In</small></span>
         </a>
-        <a href="/patient/logout" class="btn btn-outline-secondary btn-sm" aria-label="Exit to home page">
+        <a href="/patient/logout" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Exit
         </a>
     </div>
@@ -33,8 +32,8 @@
 <main class="container my-5">
     <div class="row justify-content-center">
         <div class="col-lg-8 col-md-10">
-            
-            <!-- HERO SECTION -->
+
+            <!-- HERO -->
             <div class="hero-section">
                 <h2 id="heroTitle">
                     <i class="fas fa-clipboard-user me-2"></i>
@@ -46,66 +45,59 @@
                 </p>
             </div>
 
-            <!-- ERROR MESSAGE DISPLAY -->
             {% if error %}
             <div class="alert alert-danger mb-4">{{ error }}</div>
             {% endif %}
 
-            <!-- LANGUAGE SELECTOR -->
+            <!-- LANGUAGE -->
             <div class="d-flex justify-content-end mb-4">
                 <div style="max-width: 180px;">
-                    <label for="languageSelect" class="form-label small mb-2">Interface Language:</label>
-                    <select class="form-select form-select-sm" id="languageSelect" onchange="switchLanguage(this.value)" aria-label="Select interface language">
+                    <label class="form-label small mb-2">Interface Language:</label>
+                    <select class="form-select form-select-sm" id="languageSelect" onchange="switchLanguage(this.value)">
                         <option value="English" selected>🇬🇧 English</option>
                         <option value="Hindi">🇮🇳 हिन्दी (Hindi)</option>
                     </select>
                 </div>
             </div>
 
-            <!-- FORM CARD -->
-            <!-- ACTION: Submits directly to the server, expecting a redirect -->
+            <!-- FORM -->
             <form action="/patient/submit" method="POST" class="form-card" novalidate>
-                <!-- Hidden language input for backend -->
                 <input type="hidden" name="language" id="hiddenLanguage" value="English">
 
                 <div class="row g-3">
 
-                    <!-- ===== DOCTOR SELECTION (Updated to use Model IDs) ===== -->
+                    <!-- DOCTOR -->
                     <div class="col-12">
                         <div class="form-row-label" id="sectionDoctor">👨‍⚕️ Select Your Doctor</div>
                     </div>
 
                     <div class="col-12">
-                        <label for="selectDoctor" class="form-label" id="lbl_doctor">Which doctor are you visiting? <span class="req">*</span></label>
+                        <label class="form-label" id="lbl_doctor">Which doctor are you visiting? <span class="req">*</span></label>
                         <select id="selectDoctor" name="doctor_id" class="form-select" required>
                             <option value="">-- Select a Doctor --</option>
                             {% for doctor in doctors %}
-                            <!-- VALUE IS THE DOCTOR'S DB ID (Integer) -->
                             <option value="{{ doctor.id }}">{{ doctor.name }} - {{ doctor.specialty }}</option>
                             {% endfor %}
                         </select>
-                        <small class="form-text text-muted">Your case will be reviewed by this provider</small>
                     </div>
 
-                    <!-- ===== DEMOGRAPHICS SECTION ===== -->
+                    <!-- DEMOGRAPHICS -->
                     <div class="col-12">
                         <div class="form-row-label" id="sectionDemographics">👤 Personal Information</div>
                     </div>
 
                     <div class="col-sm-6">
-                        <label for="inputName" class="form-label" id="lbl_name">Full Name</label>
+                        <label class="form-label" id="lbl_name">Full Name</label>
                         <input type="text" id="inputName" name="name" class="form-control" placeholder="Enter your full name" required>
-                        <small class="form-text text-muted">As shown on your ID</small>
                     </div>
 
                     <div class="col-sm-3">
-                        <label for="inputAge" class="form-label" id="lbl_age">Age <span class="req">*</span></label>
-                        <input type="number" id="inputAge" name="age" class="form-control" min="0" max="150" required aria-describedby="ageHelp">
-                        <small id="ageHelp" class="form-text text-muted">In years</small>
+                        <label class="form-label" id="lbl_age">Age <span class="req">*</span></label>
+                        <input type="number" id="inputAge" name="age" class="form-control" min="0" max="150" required>
                     </div>
 
                     <div class="col-sm-3">
-                        <label for="selectGender" class="form-label" id="lbl_gender">Gender</label>
+                        <label class="form-label" id="lbl_gender">Gender</label>
                         <select id="selectGender" name="gender" class="form-select">
                             <option>Female</option>
                             <option>Male</option>
@@ -113,69 +105,73 @@
                         </select>
                     </div>
 
-                    <!-- ===== VITALS SECTION (Simplified for Brevity) ===== -->
+                    <!-- VITALS -->
                     <div class="col-12 mt-2">
                         <div class="form-row-label" id="sectionVitals">📊 Vital Signs</div>
                     </div>
 
-                    <div class="col-sm-4">
-                        <label for="inputTemp" class="form-label" id="lbl_temp">Temperature (°C)</label>
+                    <div class="col-sm-3">
+                        <label class="form-label" id="lbl_temp">Temperature (°C)</label>
                         <input type="number" id="inputTemp" name="temperature" class="form-control" min="30" max="45" step="0.1" placeholder="37.0">
                     </div>
-                    
-                    <div class="col-sm-4">
-                        <label for="inputBP" class="form-label" id="lbl_bp">Blood Pressure (optional)</label>
+
+                    <div class="col-sm-3">
+                        <label class="form-label" id="lbl_bp">Blood Pressure (optional)</label>
                         <input type="text" id="inputBP" name="blood_pressure" class="form-control" placeholder="e.g. 120/80">
                     </div>
 
-                    <div class="col-sm-4">
-                        <label for="inputDuration" class="form-label" id="lbl_duration">Duration <span class="req">*</span></label>
-                        <input type="text" id="inputDuration" name="duration" class="form-control" placeholder="e.g. 2 days, 1 week" required>
+                    <div class="col-sm-3">
+                        <label class="form-label" id="lbl_weight">Weight (kg)</label>
+                        <input type="number" id="inputWeight" name="weight" class="form-control" min="1" max="500" step="0.1" placeholder="e.g. 70">
                     </div>
 
-                    <!-- ===== MEDICAL HISTORY SECTION ===== -->
+                    <div class="col-sm-3">
+                        <label class="form-label" id="lbl_height">Height (cm)</label>
+                        <input type="number" id="inputHeight" name="height" class="form-control" min="30" max="250" step="0.1" placeholder="e.g. 170">
+                    </div>
+
+                    <!-- MEDICAL -->
                     <div class="col-12 mt-2">
                         <div class="form-row-label" id="sectionMedical">⚕️ Medical Information</div>
                     </div>
 
                     <div class="col-md-6">
-                        <label for="inputAllergies" class="form-label" id="lbl_allergies">Allergies <span class="req">*</span></label>
-                        <input type="text" id="inputAllergies" name="allergies" class="form-control" placeholder="e.g. Penicillin, Peanuts, or 'None'" required>
+                        <label class="form-label" id="lbl_allergies">Allergies <span class="req">*</span></label>
+                        <input type="text" id="inputAllergies" name="allergies" class="form-control" required>
                     </div>
 
                     <div class="col-md-6">
-                        <label for="inputMeds" class="form-label" id="lbl_meds">Current Medications <span class="req">*</span></label>
-                        <input type="text" id="inputMeds" name="current_medications" class="form-control" placeholder="e.g. Aspirin 100mg daily, or 'None'" required>
+                        <label class="form-label" id="lbl_meds">Current Medications <span class="req">*</span></label>
+                        <input type="text" id="inputMeds" name="current_medications" class="form-control" required>
                     </div>
 
-                    <!-- ===== CHIEF COMPLAINT SECTION ===== -->
+                    <!-- SYMPTOMS -->
                     <div class="col-12 mt-2">
                         <div class="form-row-label" id="sectionComplaint">🏥 Chief Complaint</div>
                     </div>
 
                     <div class="col-12">
-                        <label for="textSymptoms" class="form-label" id="lbl_symptoms">Describe Your Symptoms <span class="req">*</span></label>
-                        <textarea id="textSymptoms" name="symptoms" class="form-control" rows="5" placeholder="Please describe what you are experiencing, when it started, and how it affects you..." required></textarea>
+                        <label class="form-label" id="lbl_symptoms">Describe Your Symptoms <span class="req">*</span></label>
+                        <textarea id="textSymptoms" name="symptoms" class="form-control" rows="5" required></textarea>
                     </div>
-                    
+
                     <div class="col-12">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="1" id="confirm" name="confirm" required>
-                            <label class="form-check-label small-muted" for="confirm">I confirm this data is accurate and I understand this is an AI tool for my doctor.</label>
+                            <input class="form-check-input" type="checkbox" value="1" name="confirm" required>
+                            <label class="form-check-label small-muted">I confirm this data is accurate.</label>
                         </div>
                     </div>
 
-                    <!-- ===== SUBMIT BUTTON ===== -->
+                    <!-- SUBMIT -->
                     <div class="col-12 text-center mt-4">
-                        <button type="submit" class="btn-medical w-100" id="btnSubmit">
+                        <button type="submit" class="btn-medical w-100">
                             <i class="fas fa-wand-magic-sparkles me-2"></i>
                             <span id="btnText">Generate Clinical Summary</span>
                         </button>
                     </div>
                 </div>
             </form>
-            
-            <!-- Error messages will appear here if the form fails on the server -->
+
             {% if error %}
             <div class="alert alert-danger mt-4">{{ error }}</div>
             {% endif %}
@@ -184,73 +180,81 @@
     </div>
 </main>
 
-<!-- SCRIPTS (Translation logic only) -->
+<!-- TRANSLATION SCRIPT -->
 <script>
-    const TRANSLATIONS = {
-        'Hindi': {
-            'heroTitle': '<i class="fas fa-clipboard-user me-2"></i>अपनी क्लिनिकल चेक-इन शुरू करें',
-            'heroDesc': 'यह प्री-विजिट इनटेक आपके डॉक्टर को आपकी मुलाकात के लिए तैयार करने में मदद करेगा। कृपया ईमानदारी से और विस्तार से उत्तर दें।',
-            'sectionDoctor': '👨‍⚕️ अपने डॉक्टर का चयन करें',
-            'sectionDemographics': '👤 व्यक्तिगत जानकारी',
-            'sectionVitals': '📊 महत्वपूर्ण संकेत',
-            'sectionMedical': '⚕️ चिकित्सीय जानकारी',
-            'sectionComplaint': '🏥 मुख्य शिकायत',
-            'lbl_name': 'पूरा नाम',
-            'lbl_age': 'उम्र <span class="req">*</span>',
-            'lbl_gender': 'लिंग',
-            'lbl_temp': 'तापमान (°C)',
-            'lbl_bp': 'रक्तचाप (BP)',
-            'lbl_duration': 'यह कितने समय से है? <span class="req">*</span>',
-            'lbl_allergies': 'एलर्जी <span class="req">*</span>',
-            'lbl_meds': 'वर्तमान दवाएं <span class="req">*</span>',
-            'lbl_symptoms': 'मुख्य समस्या (क्या महसूस हो रहा है?) <span class="req">*</span>',
-            'btnText': 'सारांश बनाएं'
-        },
-        'English': {
-            'heroTitle': '<i class="fas fa-clipboard-user me-2"></i>Begin Your Clinical Check-In',
-            'heroDesc': 'This pre-visit intake will help your doctor prepare for your appointment. Please answer honestly and thoroughly.',
-            'sectionDoctor': '👨‍⚕️ Select Your Doctor',
-            'sectionDemographics': '👤 Personal Information',
-            'sectionVitals': '📊 Vital Signs',
-            'sectionMedical': '⚕️ Medical Information',
-            'sectionComplaint': '🏥 Chief Complaint',
-            'lbl_name': 'Full Name',
-            'lbl_age': 'Age <span class="req">*</span>',
-            'lbl_gender': 'Gender',
-            'lbl_temp': 'Temperature (°C)',
-            'lbl_bp': 'Blood Pressure (optional)',
-            'lbl_duration': 'Duration <span class="req">*</span>',
-            'lbl_allergies': 'Allergies <span class="req">*</span>',
-            'lbl_meds': 'Current Medications <span class="req">*</span>',
-            'lbl_symptoms': 'Describe Your Symptoms <span class="req">*</span>',
-            'btnText': 'Generate Clinical Summary'
-        }
-    };
+const TRANSLATIONS = {
+    'Hindi': {
+        'heroTitle': '<i class="fas fa-clipboard-user me-2"></i>अपनी क्लिनिकल चेक-इन शुरू करें',
+        'heroDesc': 'यह इनटेक डॉक्टर को आपकी मुलाकात के लिए तैयार करता है।',
+        'sectionDoctor': '👨‍⚕️ अपने डॉक्टर का चयन करें',
+        'sectionDemographics': '👤 व्यक्तिगत जानकारी',
+        'sectionVitals': '📊 महत्वपूर्ण संकेत',
+        'sectionMedical': '⚕️ चिकित्सीय जानकारी',
+        'sectionComplaint': '🏥 मुख्य शिकायत',
 
-    function switchLanguage(lang) {
-        document.getElementById('hiddenLanguage').value = lang;
-        const textData = TRANSLATIONS[lang];
+        'lbl_name': 'पूरा नाम',
+        'lbl_age': 'उम्र <span class="req">*</span>',
+        'lbl_gender': 'लिंग',
+        'lbl_temp': 'तापमान (°C)',
+        'lbl_bp': 'रक्तचाप',
+        'lbl_allergies': 'एलर्जी <span class="req">*</span>',
+        'lbl_meds': 'वर्तमान दवाएं <span class="req">*</span>',
+        'lbl_symptoms': 'लक्षण बताएं <span class="req">*</span>',
+        'lbl_weight': 'वजन (किलोग्राम)',
+        'lbl_height': 'कद (सेंटीमीटर)',
 
-        // Update labels and static text
-        const ids = ['heroTitle', 'heroDesc', 'sectionDoctor', 'sectionDemographics', 'sectionVitals', 'sectionMedical', 'sectionComplaint', 'lbl_name', 'lbl_age', 'lbl_gender', 'lbl_temp', 'lbl_bp', 'lbl_duration', 'lbl_allergies', 'lbl_meds', 'lbl_symptoms', 'btnText'];
-        ids.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.innerHTML = textData[id] || el.innerHTML;
-        });
+        'btnText': 'सारांश बनाएं'
+    },
 
-        // Update placeholders
-        const symptomsArea = document.getElementById('textSymptoms');
-        if(lang === 'Hindi') {
-            symptomsArea.placeholder = 'कृपया विस्तार से बताएं कि आप क्या महसूस कर रहे हैं...';
-            document.getElementById('inputName').placeholder = 'अपना पूरा नाम दर्ज करें';
-            document.getElementById('inputDuration').placeholder = 'उदा. 2 दिन';
-        } else {
-            symptomsArea.placeholder = 'Please describe what you are experiencing...';
-            document.getElementById('inputName').placeholder = 'Enter your full name';
-            document.getElementById('inputDuration').placeholder = 'e.g. 2 days, 1 week';
-        }
+    'English': {
+        'heroTitle': '<i class="fas fa-clipboard-user me-2"></i>Begin Your Clinical Check-In',
+        'heroDesc': 'This intake helps your doctor prepare for your visit.',
+        'sectionDoctor': '👨‍⚕️ Select Your Doctor',
+        'sectionDemographics': '👤 Personal Information',
+        'sectionVitals': '📊 Vital Signs',
+        'sectionMedical': '⚕️ Medical Information',
+        'sectionComplaint': '🏥 Chief Complaint',
+
+        'lbl_name': 'Full Name',
+        'lbl_age': 'Age <span class="req">*</span>',
+        'lbl_gender': 'Gender',
+        'lbl_temp': 'Temperature (°C)',
+        'lbl_bp': 'Blood Pressure (optional)',
+        'lbl_allergies': 'Allergies <span class="req">*</span>',
+        'lbl_meds': 'Current Medications <span class="req">*</span>',
+        'lbl_symptoms': 'Describe Your Symptoms <span class="req">*</span>',
+        'lbl_weight': 'Weight (kg)',
+        'lbl_height': 'Height (cm)',
+
+        'btnText': 'Generate Clinical Summary'
     }
+};
+
+function switchLanguage(lang) {
+    document.getElementById('hiddenLanguage').value = lang;
+    const data = TRANSLATIONS[lang];
+
+    const ids = [
+        'heroTitle','heroDesc','sectionDoctor','sectionDemographics','sectionVitals',
+        'sectionMedical','sectionComplaint','lbl_name','lbl_age','lbl_gender','lbl_temp',
+        'lbl_bp','lbl_allergies','lbl_meds','lbl_symptoms','lbl_weight','lbl_height','btnText'
+    ];
+
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && data[id]) el.innerHTML = data[id];
+    });
+
+    if (lang === 'Hindi') {
+        document.getElementById('inputName').placeholder = 'अपना पूरा नाम दर्ज करें';
+        document.getElementById('textSymptoms').placeholder = 'लक्षण विस्तार से लिखें...';
+    } else {
+        document.getElementById('inputName').placeholder = 'Enter your full name';
+        document.getElementById('textSymptoms').placeholder = 'Please describe your symptoms...';
+    }
+}
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

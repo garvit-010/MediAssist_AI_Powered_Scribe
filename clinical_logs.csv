@@ -1,2 +1,0 @@
-timestamp,case_id,model,latency_ms,symptoms_snippet
-2025-12-12T10:53:43.347909,1BD1EADC,gemini-2.5-flash,17178.3,"cough and cold, stomach pain and loose motion"
