@@ -11,11 +11,19 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import google.generativeai as genai
 from dotenv import load_dotenv
 from functools import wraps
+from flask_sqlalchemy import SQLAlchemy
 
 load_dotenv()
 app = Flask(__name__)
 # Secret key is required for session management (Doctor Login) and flash messages
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev_secret_key_123")
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+
+# DATABASE CONFIGURATION
+# Using the provided Neon DB URL
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -25,109 +33,106 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
+# MODELS
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), nullable=False)
+    full_name = db.Column(db.String(100))
+    specialty = db.Column(db.String(100), nullable=True)
+    doctor_unique_id = db.Column(db.String(50), nullable=True)
+    
+    # Relationships
+    def to_dict(self):
+         return {
+            'id': self.id,
+            'username': self.username,
+            'role': self.role,
+            'full_name': self.full_name,
+            'password_hash': self.password_hash,
+            'specialty': self.specialty
+        }
 
-USERS_CSV = 'users.csv'
-CASES_CSV = 'cases.csv'
+class Case(db.Model):
+    id = db.Column(db.String(50), primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    doctor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    raw_data = db.Column(db.JSON)
+    ai_analysis = db.Column(db.JSON)
+    status = db.Column(db.String(50), default="Pending Review")
 
-#
+    patient = db.relationship('User', foreign_keys=[patient_id], backref='cases_as_patient')
+    doctor = db.relationship('User', foreign_keys=[doctor_id], backref='cases_as_doctor')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'case_id': self.id,
+            'patient_id': str(self.patient_id),
+            'doctor_id': str(self.doctor_id),
+            'timestamp': self.timestamp.isoformat() if self.timestamp else "",
+            'raw_data': self.raw_data,
+            'ai_analysis': self.ai_analysis,
+            'status': self.status
+        }
 
-def init_csv_db():
-    """Initialize CSV files with headers and demo data if they don't exist."""
-    if not os.path.exists(USERS_CSV):
-        with open(USERS_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['id', 'username', 'password_hash', 'role', 'full_name', 'specialty', 'doctor_unique_id'])
-            # Demo Data - Patients
-            writer.writerow(['1', 'patient1', generate_password_hash('p123'), 'patient', 'John Doe', '', ''])
-            
-            # Demo Data - Doctors
-            writer.writerow(['2', 'dr_smith', generate_password_hash('smith123'), 'doctor', 'Dr. James Smith', 'General Medicine', 'DOC-001'])
-            writer.writerow(['3', 'dr_patel', generate_password_hash('patel123'), 'doctor', 'Dr. Rajesh Patel', 'Internal Medicine', 'DOC-002'])
-            writer.writerow(['4', 'dr_lee', generate_password_hash('lee123'), 'doctor', 'Dr. Sarah Lee', 'Infectious Diseases', 'DOC-003'])
-        print("Initialized users.csv with demo data.")
+class ClinicalLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    case_id = db.Column(db.String(50), db.ForeignKey('case.id'))
+    model = db.Column(db.String(50))
+    latency_ms = db.Column(db.Float)
+    symptoms_snippet = db.Column(db.Text)
 
-    if not os.path.exists(CASES_CSV):
-        with open(CASES_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            # We store complex data (JSON) as string in CSV fields
-            writer.writerow(['case_id', 'patient_id', 'doctor_id', 'timestamp', 'raw_data_json', 'ai_analysis_json', 'status'])
-        print("Initialized cases.csv.")
+# Initialize DB (Creates tables if not exist)
+with app.app_context():
+    db.create_all()
 
-def get_all_users():
-    users = []
-    if os.path.exists(USERS_CSV):
-        with open(USERS_CSV, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            users = list(reader)
-    return users
+# HELPER FUNCTIONS (Refactored to use DB)
 
 def get_user_by_username(username):
-    users = get_all_users()
-    for user in users:
-        if user['username'] == username:
-            return user
-    return None
+    user = User.query.filter_by(username=username).first()
+    return user.to_dict() if user else None
 
 def get_user_by_id(user_id):
-    users = get_all_users()
-    for user in users:
-        if user['id'] == str(user_id):
-            return user
-    return None
+    try:
+        user = User.query.get(int(user_id))
+        return user.to_dict() if user else None
+    except:
+        return None
 
 def get_all_doctors():
-    users = get_all_users()
-    return [u for u in users if u['role'] == 'doctor']
+    doctors = User.query.filter_by(role='doctor').all()
+    return [d.to_dict() for d in doctors]
 
 def add_case(case_data):
-    # Check if file is empty to write header
-    file_exists = os.path.exists(CASES_CSV)
-    with open(CASES_CSV, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        if not file_exists:
-             writer.writerow(['case_id', 'patient_id', 'doctor_id', 'timestamp', 'raw_data_json', 'ai_analysis_json', 'status'])
-        
-        writer.writerow([
-            case_data['id'],
-            case_data['patient_id'],
-            case_data['doctor_id'],
-            case_data['timestamp'],
-            json.dumps(case_data['raw_data']),
-            json.dumps(case_data['ai_analysis']),
-            case_data['status']
-        ])
+    try:
+        new_case = Case(
+            id=case_data['id'],
+            patient_id=int(case_data['patient_id']),
+            doctor_id=int(case_data['doctor_id']),
+            timestamp=datetime.fromisoformat(case_data['timestamp']) if isinstance(case_data['timestamp'], str) else case_data['timestamp'],
+            raw_data=case_data['raw_data'],
+            ai_analysis=case_data['ai_analysis'],
+            status=case_data['status']
+        )
+        db.session.add(new_case)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error adding case: {e}")
+        raise e
 
 def get_cases_for_doctor(doctor_id):
-    cases = []
-    if os.path.exists(CASES_CSV):
-        with open(CASES_CSV, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row['doctor_id'] == str(doctor_id):
-                    try:
-                        row['raw_data'] = json.loads(row['raw_data_json'])
-                        row['ai_analysis'] = json.loads(row['ai_analysis_json'])
-                        cases.append(row)
-                    except json.JSONDecodeError:
-                        continue # Skip malformed rows
-    return cases
+    cases = Case.query.filter_by(doctor_id=int(doctor_id)).order_by(Case.timestamp.desc()).all()
+    return [c.to_dict() for c in cases]
 
 def get_case_by_id(case_id):
-    if os.path.exists(CASES_CSV):
-        with open(CASES_CSV, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row['case_id'] == str(case_id):
-                    try:
-                        row['raw_data'] = json.loads(row['raw_data_json'])
-                        row['ai_analysis'] = json.loads(row['ai_analysis_json'])
-                        return row
-                    except json.JSONDecodeError:
-                        return None
-    return None
+    case = Case.query.get(case_id)
+    return case.to_dict() if case else None
 
-# Initialize CSVs on startup
-init_csv_db()
 
 # PROMPT
 SYSTEM_PROMPT = """
@@ -200,20 +205,19 @@ def clean_medical_text(text):
 def log_interaction(case_id, inputs, latency):
     try:
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(),
             "case_id": case_id,
             "model": "gemini-2.5-flash",
             "latency_ms": round(latency * 1000, 2),
             "symptoms_snippet": inputs.get('symptoms', '')[:50]
         }
-        logging.info(f"MLOPS LOG: {json.dumps(log_entry)}")
+        logging.info(f"MLOPS LOG: {log_entry}")
         
-        csv_file = 'clinical_logs.csv'
-        file_exists = os.path.isfile(csv_file)
-        with open(csv_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=log_entry.keys())
-            if not file_exists: writer.writeheader()
-            writer.writerow(log_entry)
+        # Log to DB
+        log = ClinicalLog(**log_entry)
+        db.session.add(log)
+        db.session.commit()
+        
     except Exception as e:
         logging.error(f"Logging Error: {e}")
 
@@ -239,10 +243,10 @@ def patient_login():
         
         user = get_user_by_username(username)
         
+        # Use user dictionary
         if user and user['role'] == 'patient' and check_password_hash(user['password_hash'], password):
             session['user_id'] = user['id']
             session['role'] = 'patient'
-          
             session['account_name'] = user['full_name'] 
             return redirect(url_for('patient_intake'))
         else:
@@ -254,7 +258,7 @@ def patient_login():
 @patient_required
 def patient_intake():
     doctors = get_all_doctors()
-   
+    # Doctors are already dictionaries
     doctor_list = [{"id": d['id'], "name": d['full_name'], "specialty": d['specialty']} for d in doctors]
     return render_template('intake.html', doctors=doctor_list)
 
@@ -275,7 +279,6 @@ def patient_submit():
         doctor_id = str(doctor_id_str)
         doctor = get_user_by_id(doctor_id)
         
-  
         patient_name_input = request.form.get('name')
         if not patient_name_input:
              patient_name_input = session.get('account_name', 'Unknown')
@@ -302,14 +305,12 @@ def patient_submit():
             "language": selected_language
         }
 
- 
         model = genai.GenerativeModel("gemini-2.5-flash", generation_config={"response_mime_type": "application/json"})
         formatted_prompt = SYSTEM_PROMPT.format(language=selected_language)
         prompt = f"{formatted_prompt}\nPATIENT DATA: {json.dumps(raw_data, default=str)}"
         
         response = model.generate_content(prompt)
         
- 
         try:
             ai_text = response.text.strip()
             if ai_text.startswith("```"):
@@ -348,7 +349,6 @@ def patient_result(case_id):
         flash("Case not found.", "danger")
         return redirect(url_for('patient_intake'))
     
-
     if case['patient_id'] != str(session['user_id']):
          flash("Access Denied", "danger")
          return redirect(url_for('patient_intake'))
@@ -360,8 +360,6 @@ def patient_logout():
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for('landing'))
-
-
 
 @app.route('/doctor/login', methods=['GET', 'POST'])
 def doctor_login():
@@ -386,9 +384,7 @@ def doctor_login():
 def doctor_dashboard():
     doctor_id = session.get('user_id')
     cases_list = get_cases_for_doctor(doctor_id)
-    
-
-    cases_list.sort(key=lambda x: x['timestamp'], reverse=True)
+    # cases_list is already sorted by timestamp desc in DB query
     
     doctor_info = get_user_by_id(doctor_id)
     return render_template('doctor_dashboard.html', cases=cases_list, doctor=doctor_info)
