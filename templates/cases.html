@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>All Cases | MediAssist</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+    <style>
+      body {
+        background: #f8fafc;
+      }
+      .cases-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        color: white;
+        border-bottom: 2px solid #667eea;
+      }
+      .cases-header h1 {
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+      .cases-header p {
+        margin: 0;
+        opacity: 0.95;
+      }
+      .table-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .table {
+        margin-bottom: 0;
+      }
+      .table thead {
+        background: #f3f4f6;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+      }
+      .table tbody tr {
+        border-bottom: 1px solid #e5e7eb;
+        transition: background-color 0.2s ease;
+      }
+      .table tbody tr:hover {
+        background-color: #f9fafb;
+      }
+      .case-date {
+        font-weight: 500;
+        color: #1f2937;
+      }
+      .case-link {
+        color: #667eea;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s ease;
+      }
+      .case-link:hover {
+        color: #764ba2;
+        text-decoration: underline;
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 0.4rem 0.8rem;
+        border-radius: 50px;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .status-pending {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .status-completed {
+        background: #d1fae5;
+        color: #065f46;
+      }
+      .status-reviewed {
+        background: #dbeafe;
+        color: #0c2d6b;
+      }
+      .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: #6b7280;
+      }
+      .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        color: #d1d5db;
+      }
+      .empty-state h5 {
+        color: #374151;
+        margin-bottom: 0.5rem;
+      }
+      .btn-back {
+        margin-bottom: 2rem;
+      }
+      .cases-count {
+        background: rgba(255, 255, 255, 0.2);
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 50px;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- NAVBAR -->
+    <nav class="navbar navbar-dark bg-dark">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+          <i class="fas fa-hospital-user me-2"></i>MediAssist
+        </a>
+        <div class="d-flex align-items-center gap-3">
+          {% if role == 'doctor' %}
+          <a href="/doctor/dashboard" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-home me-1"></i>Dashboard
+          </a>
+          <a href="/doctor/logout" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-sign-out-alt me-1"></i>Logout
+          </a>
+          {% else %}
+          <a href="/patient/intake" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-home me-1"></i>Home
+          </a>
+          <a href="/patient/intake" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-plus me-1"></i>Add Case
+          </a>
+          <a href="/patient/logout" class="btn btn-outline-light btn-sm">
+            <i class="fas fa-sign-out-alt me-1"></i>Logout
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </nav>
+
+    <!-- HEADER -->
+    <div class="cases-header">
+      <div class="container-fluid">
+        <h1>
+          <i class="fas fa-folder-open me-2"></i>
+          {% if role == 'doctor' %} Your Assigned Cases {% else %} Your Health
+          Records {% endif %}
+        </h1>
+        <p>
+          {% if role == 'doctor' %} View all patient cases assigned to you {%
+          else %} View all your clinical cases and consultations {% endif %}
+        </p>
+        <div class="cases-count">
+          <i class="fas fa-briefcase-medical me-1"></i>
+          {{ cases|length }} Case{% if cases|length != 1 %}s{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="container-fluid my-5">
+      {% if cases %}
+      <div class="table-container">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th><i class="fas fa-calendar me-2"></i>Date</th>
+              <th><i class="fas fa-user-circle me-2"></i>Patient Name</th>
+              <th><i class="fas fa-user-md me-2"></i>Doctor Name</th>
+              <th><i class="fas fa-info-circle me-2"></i>Status</th>
+              <th><i class="fas fa-external-link-alt me-2"></i>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for case in cases %}
+            <tr>
+              <td class="case-date">
+                {% if case.timestamp %} {{ case.timestamp[:10] }} {% else %} N/A
+                {% endif %}
+              </td>
+              <td>
+                {% if case.raw_data and case.raw_data.patient_name %} {{
+                case.raw_data.patient_name }} {% else %} Unknown Patient {%
+                endif %}
+              </td>
+              <td>
+                {% if case.raw_data and case.raw_data.doctor_name %} {{
+                case.raw_data.doctor_name }} {% else %} Unknown Doctor {% endif
+                %}
+              </td>
+              <td>
+                {% if case.status == "Pending Review" %}
+                <span class="status-badge status-pending">
+                  <i class="fas fa-hourglass-half me-1"></i>{{ case.status }}
+                </span>
+                {% elif case.status == "Completed" %}
+                <span class="status-badge status-completed">
+                  <i class="fas fa-check-circle me-1"></i>{{ case.status }}
+                </span>
+                {% elif case.status == "Reviewed" %}
+                <span class="status-badge status-reviewed">
+                  <i class="fas fa-eye me-1"></i>{{ case.status }}
+                </span>
+                {% else %}
+                <span
+                  class="status-badge"
+                  style="background: #f3f4f6; color: #6b7280"
+                >
+                  {{ case.status }}
+                </span>
+                {% endif %}
+              </td>
+              <td>
+                {% if role == 'doctor' %}
+                <a href="/doctor/view/{{ case.id }}" class="case-link">
+                  <i class="fas fa-eye me-1"></i>View Details
+                </a>
+                {% else %}
+                <a href="/patient/result/{{ case.id }}" class="case-link">
+                  <i class="fas fa-eye me-1"></i>View Summary
+                </a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="table-container">
+        <div class="empty-state">
+          <i class="fas fa-inbox"></i>
+          <h5>No Cases Found</h5>
+          <p>
+            {% if role == 'doctor' %} You don't have any cases assigned yet.
+            Check back soon! {% else %} You haven't submitted any cases yet.
+            Start by submitting your intake form. {% endif %}
+          </p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="bg-light border-top mt-5 py-4">
+      <div class="container-fluid text-center text-muted small">
+        <p class="mb-0">
+          &copy; 2024 MediAssist. Patient privacy is our priority.
+        </p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
