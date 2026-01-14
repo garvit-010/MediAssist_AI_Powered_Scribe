@@ -208,7 +208,13 @@ OUTPUT FORMAT: Return ONLY valid JSON. Do not include markdown formatting like `
     "subjective_list": ["Point 1", "Point 2"],
     "objective_list": ["Point 1", "Point 2"],
     "assessment_list": ["Point 1", "Point 2"],
-    "plan_list": ["Point 1", "Point 2"]
+    "plan_list": ["Point 1", "Point 2"],
+    "possible_conditions": [
+      {{ "name": "Condition A", "confidence": 0.XX }},
+      {{ "name": "Condition B", "confidence": 0.XX }}
+    ],
+    "urgency_level": "Low/Medium/High",
+    "follow_up_required": true/false
   }},
   "safety": {{
     "is_safe": true,
