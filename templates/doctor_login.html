@@ -12,12 +12,21 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
     />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/styles.css') }}"
+    />
     <style>
       body {
         background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
         display: flex;
         align-items: center;
         justify-content: center;
+        transition: background 0.3s ease;
+      }
+      [data-theme="dark"] body {
+        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+      }
         min-height: 100vh;
         font-family: "Inter", sans-serif;
       }
@@ -94,9 +103,8 @@
     </style>
   </head>
   <body>
-    <div style="position: fixed; top: 20px; right: 20px; z-index: 1000">
-      {% include '_language_toggle.html' %}
-    </div>
+    {% include '_settings_popup.html' %}
+
     <div class="login-card">
       <div class="login-header">
         <h2><i class="fas fa-user-md me-2"></i>{{ t.doctor_login.title }}</h2>
@@ -152,5 +160,7 @@
         <a href="/"><i class="fas fa-arrow-left me-1"></i>Back to Home</a>
       </div>
     </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   </body>
 </html>
