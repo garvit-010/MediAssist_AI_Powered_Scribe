@@ -1,0 +1,41 @@
+<!-- Settings Floating Button & Popup -->
+<button class="settings-fab" aria-label="Settings" title="Settings">
+  <i class="fas fa-cog"></i>
+</button>
+
+<div class="settings-popup">
+  <div class="settings-popup-header">
+    <i class="fas fa-sliders-h"></i>
+    Settings
+  </div>
+
+  <!-- Theme Toggle Section -->
+  <div class="settings-section">
+    <div class="settings-label"><i class="fas fa-palette"></i> Appearance</div>
+    <div
+      class="theme-switch"
+      role="button"
+      tabindex="0"
+      aria-label="Toggle dark mode"
+    >
+      <div class="theme-switch-label">
+        <span class="theme-switch-icon">
+          <i class="fas fa-sun" data-theme-icon="light"></i>
+          <i
+            class="fas fa-moon"
+            data-theme-icon="dark"
+            style="display: none"
+          ></i>
+        </span>
+        <span id="theme-label">Dark Mode</span>
+      </div>
+      <div class="theme-switch-toggle"></div>
+    </div>
+  </div>
+
+  <!-- Language Toggle Section -->
+  <div class="settings-section">
+    <div class="settings-label"><i class="fas fa-language"></i> Language</div>
+    <div class="language-section">{% include '_language_toggle.html' %}</div>
+  </div>
+</div>
