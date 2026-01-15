@@ -1,247 +1,144 @@
+# MediAssist - AI-Powered Clinical Scribe & Patient Communication System
 
----
+MediAssist is a full-stack, role-based medical documentation system that converts raw patient symptoms into dual-purpose clinical intelligence. It bridges the communication gap between patients and doctors while preserving clinical accuracy, trust, and documentation efficiency.
 
-# 🏥 MediAssist — AI-Powered Clinical Scribe & Patient Communication System
+## Key Features
 
-**🔗 Live Demo:** https://drive.google.com/file/d/1OhT6f8fyNhImuS_XcwlQSJv5BnP6Ubje/view?usp=sharing
+- **Dual-View Generation:** Generates synchronized outputs for two distinct audiences:
+    - **Patient View:** Plain-language summary (Hindi/English) for better understanding.
+    - **Doctor View:** Structured SOAP notes (English) for clinical records.
+    
+- **Local AI Privacy:** Utilizes **Llama 3** (via Ollama) running locally to ensure patient data privacy and offline capability.
 
-MediAssist is a full-stack, role-based medical documentation system that converts raw patient symptoms into **dual-purpose clinical intelligence**.
-Using **Google Gemini**, it produces:
+- **Enterprise-Grade Database:** Powered by **PostgreSQL (Neon DB)** for scalable, secure, and relational data storage, replacing legacy CSV systems.
 
-1. **Empathetic, localized patient summaries** (Hindi/English)
-2. **Structured clinical SOAP notes** for physicians
+- **Role-Based Access Control (RBAC):**
+    - Patients: Submit symptoms, view their own case summaries.
+    - Doctors: Review assigned cases, access detailed clinical SOAP notes.
 
-This system bridges the communication gap between patients and doctors while preserving clinical accuracy, trust, and documentation efficiency.
+- **Strict Structured Output:** Enforces deterministic JSON outputs from the AI model to ensure consistency and machine-readability.
 
----
+- **Multi-Language Support:** Full support for English and Hindi to cater to diverse patient demographics.
 
-## ❗ The Core Problem
+## System Architecture
 
-Modern healthcare suffers from **documentation overload**. Physicians spend a significant portion of their day typing clinical notes, decreasing face-to-face time with patients. Meanwhile, patients may struggle to understand overly technical medical wording, especially in multilingual environments.
+The application is built using a modern, lightweight stack:
 
-**Challenge:**
-How do we augment clinical workflows with AI **without reducing patient trust or compromising medical accuracy**?
+- **Backend:** Flask (Python)
+- **Database:** PostgreSQL (via Neon Serverless Postgres)
+- **ORM:** SQLAlchemy
+- **AI Logic:** Llama 3 (running via Ollama)
+- **Frontend:** HTML5, CSS3, JavaScript (Jinja2 Templates)
 
----
+## Screenshots
 
-## 🚀 MediAssist — Engineering-Driven Solution
+### Login Page
+![Login Page](./assets/Login_Page.jpeg)
 
-MediAssist introduces a **Dual-Agent Scribe Architecture**:
+### Patient Registration / Intake
+![Registration Form](./assets/reg_form.jpeg)
 
-### 🔹 1. Dual-View Generation
+### AI-Generated Patient Summary (Patient View)
+![AI Summary](./assets/AI_summary.jpeg)
 
-Gemini generates *two* synchronized outputs:
+### Doctor Dashboard
+![Doctor Dashboard](./assets/Doc_Dashboard.jpeg)
 
-* **Patient View:** Plain-language summary (Hindi/English)
-* **Doctor View:** Structured SOAP note (English only)
+### Clinical SOAP Note (Doctor View)
+![SOAP Note](./assets/Doc_Soap.jpeg)
 
-### 🔹 2. Persistent Case Storage (Local MLOps)
+## Installation and Setup
 
-The system uses simple but effective CSV “databases”:
+Follow these steps to set up the project locally.
 
-* `users.csv` — Auth + RBAC
-* `cases.csv` — Case metadata + AI outputs
+### 1. Prerequisites
 
-### 🔹 3. Strict JSON Medical Prompting
+Ensure you have the following installed:
+- Python 3.9 or higher
+- [Ollama](https://ollama.com/) (for running Llama 3 locally)
+- A Neon PostgreSQL database (or any PostgreSQL instance)
 
-The AI always returns:
+### 2. Configure AI Model
 
-* Deterministic structured JSON
-* SOAP components
-* Safety fields
-* Language-specific responses
+1. Install Ollama from the official website.
+2. Pull the Llama 3 model:
+   ```bash
+   ollama pull llama3
+   ```
+3. Ensure the Ollama service is running on `http://localhost:11434`.
 
-### 🔹 4. Role-Based Access Control (RBAC)
-
-* Patients can only submit cases
-* Doctors only view cases assigned to them
-* Protected Flask sessions maintain identity
-
-### 🔹 5. Multi-Language Communication (i18n)
-
-Supports:
-
-* **Hindi**
-* **English**
-
-For culturally contextual patient communication.
-
----
-
-# 🧩 System Architecture Overview
-
-```
-Patient Intake → JSON Prompt → Gemini Model → AI Dual Output
-       ↓                                   ↓
-   Raw Data Saved                    SOAP Note + Summary
-       ↓                                   ↓
- CSV Persistence                   Doctor Dashboard View
-```
-
-Core elements:
-
-* Flask backend
-* Gemini 2.5 Flash model
-* Case logging (`clinical_logs.csv`)
-* Secure password hashing
-* UUID case identifiers
-
----
-
-# 🛠️ Features (Engineering Breakdown)
-
-| Feature                       | Description                        | Tech Keywords                             |
-| ----------------------------- | ---------------------------------- | ----------------------------------------- |
-| **Dual-Language Scribing**    | Patient summary + Doctor SOAP note | Prompt Engineering, NLP, Agentic Workflow |
-| **CSV-Based Local DB**        | Persistent local storage           | MLOps Lite, Logging                       |
-| **RBAC System**               | Doctor/Patient access separation   | Flask Auth, Secure Sessions               |
-| **Case History & Versioning** | Reproducible AI outputs            | Audit Trails                              |
-| **Localization**              | Hindi/English                      | i18n, UX                                  |
-| **Fully Structured Output**   | Deterministic JSON                 | Structure Enforcement                     |
-
----
-
-# ▶️ Running the Project Locally
-
-## **1. Prerequisites**
-
-* Python 3.9+
-* Gemini API Key
-
----
-
-## **2. Installation**
+### 3. Clone Repository
 
 ```bash
-git clone https://github.com/garvit-010/MediAssist_AI_Powered_Scribe.git
-cd MediAssist
+git clone https://github.com/your-username/MediAssist_AI_Powered_Scribe.git
+cd MediAssist_AI_Powered_Scribe
 ```
 
-Create environment:
+### 4. Install Dependencies
+
+Create a virtual environment and install the required packages:
 
 ```bash
 python -m venv venv
-source venv/bin/activate     # Mac/Linux
-venv\Scripts\activate        # Windows
-```
+# On Windows:
+venv\Scripts\activate
+# On Mac/Linux:
+source venv/bin/activate
 
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
----
+### 5. Environment Configuration
 
-## **3. Environment Setup**
+Create a `.env` file in the root directory and add the following configuration:
 
-Add a `.env` file:
+```ini
+# Flask Security
+FLASK_SECRET_KEY="your-secure-random-key"
 
+# Database Connection (Neon Postgres)
+DATABASE_URL="postgresql://user:password@endpoint.neon.tech/dbname?sslmode=require"
+
+# AI Configuration (Optional override)
+# OLLAMA_API_URL="http://localhost:11434/api/generate"
 ```
-GEMINI_API_KEY="YOUR_KEY"
-FLASK_SECRET_KEY="ANY_RANDOM_SECURE_KEY"
+
+### 6. Database Initialization
+
+Initialize the database schema and migrate any existing data:
+
+```bash
+# This will create tables and migrate data from legacy CSV files if present
+python migrate_db.py
 ```
 
----
+### 7. Run the Application
 
-## **4. Initialize Data**
+Start the Flask development server:
 
 ```bash
 python app.py
 ```
 
-Demo credentials:
+Access the application at `http://127.0.0.1:5000`.
 
-| Role    | Username | Password |
-| ------- | -------- | -------- |
-| Patient | patient1 | p123     |
-| Doctor  | dr_smith | smith123 |
-| Doctor  | dr_patel | patel123 |
+## Demo Workflow
 
----
+1. **Patient Access:**
+   - Log in as a patient (Demo credentials created during migration).
+   - Navigate to **Intake Form**.
+   - Input symptoms and select a doctor.
+   - Submit for AI Processing.
 
-# 🧪 Demo Workflow
+2. **AI Processing:**
+   - The system sends data to the local Llama 3 model.
+   - Generates a patient-friendly summary and a clinical SOAP note.
 
-### **1. Patient Login**
+3. **Doctor Review:**
+   - Log in as a doctor.
+   - View the **Doctor Dashboard**.
+   - Select the patient case to view the structured SOAP note and risk assessment.
 
-Go to `/patient/login` → login as **patient1 / p123**
+## License
 
-### **2. Submit Symptoms**
-
-Fill patient details and select a doctor.
-
-### **3. AI Processing**
-
-System generates:
-
-* Patient summary
-* Doctor SOAP note
-
-### **4. Doctor Review**
-
-Login as **dr_patel / patel123**
-View the case in the doctor dashboard.
-
----
-
-# 📸 UI Previews
-
-### **🖼️ Login Page**
-
-![Login Page](./assets/Login_Page.jpeg)
-
----
-
-### **🖼️ Intake / Registration Form**
-
-![Registration Form](./assets/reg_form.jpeg)
-
----
-
-### **🖼️ AI-Generated Summary (Patient View)**
-
-![AI Summary](./assets/AI_summary.jpeg)
-
----
-
-
-### **🖼️ Doctor Dashboard**
-
-![Doctor Dashboard](./assets/Doc_Dashboard.jpeg)
-
----
-
-### **🖼️ Clinical SOAP Note**
-
-![SOAP Note](./assets/Doc_Soap.jpeg)
-
----
-
-# 🛣️ Future Roadmap
-
-### 🔧 Full MLOps Integration
-
-* MLflow/DVC support
-* Prompt + model version tracking
-
-### ⚡ Asynchronous Tasks
-
-* Redis + Celery background workers
-
-### 🎨 UI/UX Improvements
-
-* Enhanced language switching
-* Suggestive symptom input
-
-### 🗄️ Database Migration
-
-* PostgreSQL / Firebase for scalability
-
----
-
-# 📜 License
-
-MIT License — free for personal and commercial use.
-
----
-
+This project is licensed under the MIT License.
