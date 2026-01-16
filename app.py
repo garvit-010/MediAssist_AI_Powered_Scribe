@@ -449,9 +449,11 @@ def log_audit_action(action, case_id=None, user_id=None):
         logging.info(
             f"AUDIT LOG: User: {username} | Action: {action} | Case: {case_id} | Time: {new_log.timestamp}"
         )
+        return True
     except Exception as e:
         db.session.rollback()
         logging.error(f"Error logging audit action: {e}")
+        return False
 
 
 # ROUTES
@@ -563,6 +565,7 @@ def patient_submit():
 
         # Log initial case creation immediately
         log_audit_action("case_creation", case_id)
+        # db.session.commit() # Already committed inside log_audit_action
 
         formatted_prompt = SYSTEM_PROMPT.format(language=selected_language)
         prompt = (

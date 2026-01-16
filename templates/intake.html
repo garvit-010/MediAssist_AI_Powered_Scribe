@@ -71,6 +71,7 @@
 
           <!-- FORM -->
           <form
+            id="intakeForm"
             action="/patient/submit"
             method="POST"
             class="form-card"
@@ -301,9 +302,10 @@
 
               <!-- SUBMIT -->
               <div class="col-12 text-center mt-4">
-                <button type="submit" class="btn-medical w-100">
-                  <i class="fas fa-wand-magic-sparkles me-2"></i>
-                  <span>{{ t.intake.submit_btn }}</span>
+                <button type="submit" class="btn-medical w-100" id="submitBtn">
+                  <span id="btnSpinner" class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                  <i class="fas fa-wand-magic-sparkles me-2" id="btnIcon"></i>
+                  <span id="btnLabel">{{ t.intake.submit_btn }}</span>
                 </button>
               </div>
             </div>
