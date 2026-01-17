@@ -698,8 +698,24 @@ def doctor_dashboard():
     translations = get_translations(lang_code)
 
     doctor_id = session.get("user_id")
+    
+    # Get filters from query params
+    search_query = request.args.get('search', '')
+    urgency_filter = request.args.get('urgency', '')
+    language_filter = request.args.get('language', '')
+    
     cases_list = get_cases_for_doctor(doctor_id)
-    # cases_list is already sorted by timestamp desc in DB query
+    
+    # Apply filters in Python
+    if search_query:
+        search_query = search_query.lower()
+        cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
+        
+    if urgency_filter:
+        cases_list = [c for c in cases_list if c.get('ai_analysis') and c.get('ai_analysis').get('doctor_view', {}).get('urgency_level') == urgency_filter]
+        
+    if language_filter:
+        cases_list = [c for c in cases_list if c.get('raw_data') and c.get('raw_data').get('language') == language_filter]
 
     doctor_info = get_user_by_id(doctor_id)
     return render_template(
@@ -708,6 +724,7 @@ def doctor_dashboard():
         doctor=doctor_info,
         t=translations,
         lang=lang_code,
+        filters={'search': search_query, 'urgency': urgency_filter, 'language': language_filter}
     )
 
 
@@ -812,6 +829,11 @@ def view_cases():
 
     user_id = session.get("user_id")
     role = session.get("role")
+    
+    search_query = request.args.get('search', '')
+    urgency_filter = request.args.get('urgency', '')
+    language_filter = request.args.get('language', '')
+    doctor_filter = request.args.get('doctor', '')
 
     if role == "doctor":
         cases_list = get_cases_for_doctor(user_id)
@@ -821,8 +843,28 @@ def view_cases():
         flash("Invalid role.", "danger")
         return redirect(url_for("landing"))
 
+    # Apply filters
+    if search_query:
+        search_query = search_query.lower()
+        cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
+        
+    if urgency_filter:
+        cases_list = [c for c in cases_list if c.get('ai_analysis') and c.get('ai_analysis').get('doctor_view', {}).get('urgency_level') == urgency_filter]
+        
+    if language_filter:
+        cases_list = [c for c in cases_list if c.get('raw_data') and c.get('raw_data').get('language') == language_filter]
+        
+    if doctor_filter:
+        doctor_filter = doctor_filter.lower()
+        cases_list = [c for c in cases_list if c.get('raw_data') and doctor_filter in c.get('raw_data').get('doctor_name', '').lower()]
+
     return render_template(
-        "cases.html", cases=cases_list, role=role, t=translations, lang=lang_code
+        "cases.html", 
+        cases=cases_list, 
+        role=role, 
+        t=translations, 
+        lang=lang_code,
+        filters={'search': search_query, 'urgency': urgency_filter, 'language': language_filter, 'doctor': doctor_filter}
     )
 
 

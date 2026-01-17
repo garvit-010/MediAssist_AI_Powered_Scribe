@@ -168,6 +168,81 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ========================================
+  // DYNAMIC TABLE FILTERING
+  // ========================================
+
+  const filterForms = document.querySelectorAll(".filter-form");
+  filterForms.forEach((filterForm) => {
+    const searchInput = filterForm.querySelector('input[name="search"]');
+    const doctorInput = filterForm.querySelector('input[name="doctor"]');
+    const urgencySelect = filterForm.querySelector('select[name="urgency"]');
+    const languageSelect = filterForm.querySelector('select[name="language"]');
+
+    const table = document.querySelector("table");
+    if (!table) return;
+
+    const rows = table.querySelectorAll("tbody tr");
+
+    const filterTable = () => {
+      const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
+      const doctorTerm = doctorInput ? doctorInput.value.toLowerCase() : "";
+      const urgencyTerm = urgencySelect ? urgencySelect.value : "";
+      const languageTerm = languageSelect ? languageSelect.value : "";
+
+      rows.forEach((row) => {
+        let text = row.innerText.toLowerCase();
+        let showRow = true;
+
+        if (searchTerm && !text.includes(searchTerm)) {
+          showRow = false;
+        }
+
+        if (doctorTerm && !text.includes(doctorTerm)) {
+          showRow = false;
+        }
+
+        // For urgency and language, we might need more specific checks if they are in specific columns
+        // but for a simple "dynamic" feel, checking the whole row text is often enough
+        // unless there are overlaps.
+        
+        // If we want to be more precise:
+        if (urgencyTerm && !text.includes(urgencyTerm.toLowerCase())) {
+          showRow = false;
+        }
+        
+        if (languageTerm && !text.includes(languageTerm.toLowerCase())) {
+          showRow = false;
+        }
+
+        row.style.display = showRow ? "" : "none";
+      });
+
+      // Show "No results" if all rows are hidden
+      const visibleRows = Array.from(rows).filter(
+        (r) => r.style.display !== "none"
+      );
+      const noResultsMsg = document.getElementById("no-results-msg");
+
+      if (visibleRows.length === 0) {
+        if (!noResultsMsg) {
+          const msg = document.createElement("div");
+          msg.id = "no-results-msg";
+          msg.className = "text-center p-4 text-muted";
+          msg.innerHTML = '<i class="fas fa-search me-2"></i>No matching cases found.';
+          table.parentNode.appendChild(msg);
+        }
+      } else {
+        if (noResultsMsg) noResultsMsg.remove();
+      }
+    };
+
+    if (searchInput) searchInput.addEventListener("input", filterTable);
+    if (doctorInput) doctorInput.addEventListener("input", filterTable);
+    if (urgencySelect) urgencySelect.addEventListener("change", filterTable);
+    if (languageSelect) languageSelect.addEventListener("change", filterTable);
+  });
+
   // allow graceful re-enable if ajax hangs
   window.addEventListener("pagehide", () => {
     if (submitBtn) submitBtn.disabled = false;

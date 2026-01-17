@@ -122,12 +122,47 @@
 
     <!-- MAIN CONTENT -->
     <div class="container-fluid my-5">
-      <div class="mb-4">
-        <h4 class="fw-bold text-dark">
-          {{ t.doctor_dashboard.pending_review }}
-        </h4>
-        <p class="text-muted">{{ t.doctor_dashboard.no_cases if not cases }}</p>
+      <div class="row mb-4 align-items-end">
+        <div class="col-md-4">
+          <h4 class="fw-bold text-dark mb-0">
+            {{ t.doctor_dashboard.pending_review }}
+          </h4>
+        </div>
+        <div class="col-md-8">
+          <form method="GET" class="row g-2 justify-content-end filter-form">
+            <div class="col-md-4">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text bg-white border-end-0">
+                  <i class="fas fa-search text-muted"></i>
+                </span>
+                <input type="text" name="search" class="form-control border-start-0" placeholder="Search patient or case ID..." value="{{ filters.search }}">
+              </div>
+            </div>
+            <div class="col-md-3">
+              <select name="urgency" class="form-select form-select-sm">
+                <option value="">All Urgency</option>
+                <option value="Low" {% if filters.urgency == 'Low' %}selected{% endif %}>Low</option>
+                <option value="Medium" {% if filters.urgency == 'Medium' %}selected{% endif %}>Medium</option>
+                <option value="High" {% if filters.urgency == 'High' %}selected{% endif %}>High</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <select name="language" class="form-select form-select-sm">
+                <option value="">All Languages</option>
+                <option value="English" {% if filters.language == 'English' %}selected{% endif %}>English</option>
+                <option value="Hindi" {% if filters.language == 'Hindi' %}selected{% endif %}>Hindi</option>
+              </select>
+            </div>
+            <div class="col-auto">
+              <button type="submit" class="btn btn-sm btn-dark">Filter</button>
+              {% if filters.search or filters.urgency or filters.language %}
+              <a href="/doctor/dashboard" class="btn btn-sm btn-outline-secondary">Clear</a>
+              {% endif %}
+            </div>
+          </form>
+        </div>
       </div>
+      <p class="text-muted">{{ t.doctor_dashboard.no_cases if not cases }}</p>
 
       {% if cases %}
       <div class="card shadow-sm border-0">
@@ -158,6 +193,17 @@
                     >{{ case.raw_data.age }}y / {{ case.raw_data.gender
                     }}</small
                   >
+                  <div class="mt-1">
+                    {% set urgency = case.ai_analysis.doctor_view.urgency_level %}
+                    {% if urgency == 'High' %}
+                      <span class="badge bg-danger text-white small">High Urgency</span>
+                    {% elif urgency == 'Medium' %}
+                      <span class="badge bg-warning text-dark small">Medium Urgency</span>
+                    {% else %}
+                      <span class="badge bg-info text-dark small">Low Urgency</span>
+                    {% endif %}
+                    <span class="badge bg-secondary text-white small ms-1">{{ case.raw_data.language }}</span>
+                  </div>
                 </td>
                 <td>
                   <span

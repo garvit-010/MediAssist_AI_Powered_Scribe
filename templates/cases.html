@@ -170,6 +170,62 @@
 
     <!-- MAIN CONTENT -->
     <div class="container-fluid my-5">
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card shadow-sm border-0 p-3">
+            <form method="GET" class="row g-3 align-items-end filter-form">
+              <div class="col-md-3">
+                <label class="form-label small fw-bold text-muted">Search</label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text bg-white border-end-0">
+                    <i class="fas fa-search text-muted"></i>
+                  </span>
+                  <input type="text" name="search" class="form-control border-start-0" placeholder="Patient name or ID..." value="{{ filters.search }}">
+                </div>
+              </div>
+              
+              {% if role == 'patient' %}
+              <div class="col-md-3">
+                <label class="form-label small fw-bold text-muted">Doctor</label>
+                <input type="text" name="doctor" class="form-control form-control-sm" placeholder="Doctor name..." value="{{ filters.doctor }}">
+              </div>
+              {% endif %}
+
+              <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Urgency</label>
+                <select name="urgency" class="form-select form-select-sm">
+                  <option value="">All</option>
+                  <option value="Low" {% if filters.urgency == 'Low' %}selected{% endif %}>Low</option>
+                  <option value="Medium" {% if filters.urgency == 'Medium' %}selected{% endif %}>Medium</option>
+                  <option value="High" {% if filters.urgency == 'High' %}selected{% endif %}>High</option>
+                </select>
+              </div>
+
+              <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Language</label>
+                <select name="language" class="form-select form-select-sm">
+                  <option value="">All</option>
+                  <option value="English" {% if filters.language == 'English' %}selected{% endif %}>English</option>
+                  <option value="Hindi" {% if filters.language == 'Hindi' %}selected{% endif %}>Hindi</option>
+                </select>
+              </div>
+
+              <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100">
+                  <i class="fas fa-filter me-1"></i>Apply
+                </button>
+              </div>
+              
+              {% if filters.search or filters.urgency or filters.language or filters.doctor %}
+              <div class="col-md-1">
+                <a href="/cases" class="btn btn-sm btn-outline-secondary w-100">Clear</a>
+              </div>
+              {% endif %}
+            </form>
+          </div>
+        </div>
+      </div>
+
       {% if cases %}
       <div class="table-container">
         <table class="table table-hover">
@@ -200,6 +256,17 @@
                 {% if case.raw_data and case.raw_data.patient_name %} {{
                 case.raw_data.patient_name }} {% else %} Unknown Patient {%
                 endif %}
+                <div class="mt-1">
+                  {% set urgency = case.ai_analysis.doctor_view.urgency_level if case.ai_analysis and case.ai_analysis.doctor_view else 'Low' %}
+                  {% if urgency == 'High' %}
+                    <span class="badge bg-danger text-white" style="font-size: 0.7rem;">High</span>
+                  {% elif urgency == 'Medium' %}
+                    <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">Medium</span>
+                  {% else %}
+                    <span class="badge bg-info text-dark" style="font-size: 0.7rem;">Low</span>
+                  {% endif %}
+                  <span class="badge bg-secondary text-white ms-1" style="font-size: 0.7rem;">{{ case.raw_data.language if case.raw_data else 'en' }}</span>
+                </div>
               </td>
               <td>
                 {% if case.raw_data and case.raw_data.doctor_name %} {{
