@@ -185,13 +185,21 @@
             <code class="text-primary fw-bold">{{ case.raw_data.id }}</code>
           </h3>
         </div>
-        <button
-          onclick="window.print()"
-          class="btn btn-primary"
-          title="Print to EMR"
-        >
-          <i class="fas fa-print me-2"></i>Print to EMR
-        </button>
+        <div class="d-flex gap-2">
+          <a
+            href="{{ url_for('doctor_edit', case_id=case.id) }}"
+            class="btn btn-outline-primary"
+          >
+            <i class="fas fa-edit me-2"></i>Edit Case
+          </a>
+          <button
+            onclick="window.print()"
+            class="btn btn-primary"
+            title="Print to EMR"
+          >
+            <i class="fas fa-print me-2"></i>Print to EMR
+          </button>
+        </div>
       </div>
 
       <div class="card paper-card">

@@ -111,6 +111,16 @@ class ClinicalLog(db.Model):
     symptoms_snippet = db.Column(db.Text)
 
 
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    action = db.Column(db.String(100), nullable=False)
+    case_id = db.Column(db.String(50), nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", backref="audit_logs")
+
+
 # Initialize DB (Creates tables if not exist)
 with app.app_context():
     db.create_all()
@@ -408,6 +418,44 @@ def log_interaction(case_id, inputs, latency):
         logging.error(f"Logging Error: {e}")
 
 
+def log_audit_action(action, case_id=None, user_id=None):
+    """Log an audit action to the database."""
+    try:
+        if user_id is None:
+            user_id = session.get("user_id")
+            
+        if not user_id:
+            return
+
+        new_log = AuditLog(
+            user_id=int(user_id),
+            action=action,
+            case_id=case_id,
+            timestamp=datetime.utcnow(),
+        )
+        db.session.add(new_log)
+        db.session.commit()
+
+        # Also log to standard logging for visibility
+        if user_id == session.get("user_id"):
+            username = (
+                session.get("account_name") or session.get("name") or f"User {user_id}"
+            )
+        else:
+            # If we're logging for a different user (e.g. attributing summary to doctor)
+            user = get_user_by_id(user_id)
+            username = user["full_name"] if user else f"User {user_id}"
+            
+        logging.info(
+            f"AUDIT LOG: User: {username} | Action: {action} | Case: {case_id} | Time: {new_log.timestamp}"
+        )
+        return True
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error logging audit action: {e}")
+        return False
+
+
 # ROUTES
 
 
@@ -515,6 +563,10 @@ def patient_submit():
             "language": selected_language,
         }
 
+        # Log initial case creation immediately
+        log_audit_action("case_creation", case_id)
+        # db.session.commit() # Already committed inside log_audit_action
+
         formatted_prompt = SYSTEM_PROMPT.format(language=selected_language)
         prompt = (
             f"{formatted_prompt}\nPATIENT DATA: {json.dumps(raw_data, default=str)}"
@@ -572,6 +624,9 @@ def patient_submit():
             "status": "Pending Review",
         }
         add_case(case_record)
+
+        # Log summary generation - attribute to the assigned doctor as per clinical workflow
+        log_audit_action("generate_summary", case_id, user_id=doctor_id)
 
         log_interaction(case_id, raw_data, time.time() - start_time)
         return redirect(url_for("patient_result", case_id=case_id))
@@ -643,8 +698,24 @@ def doctor_dashboard():
     translations = get_translations(lang_code)
 
     doctor_id = session.get("user_id")
+    
+    # Get filters from query params
+    search_query = request.args.get('search', '')
+    urgency_filter = request.args.get('urgency', '')
+    language_filter = request.args.get('language', '')
+    
     cases_list = get_cases_for_doctor(doctor_id)
-    # cases_list is already sorted by timestamp desc in DB query
+    
+    # Apply filters in Python
+    if search_query:
+        search_query = search_query.lower()
+        cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
+        
+    if urgency_filter:
+        cases_list = [c for c in cases_list if c.get('ai_analysis') and c.get('ai_analysis').get('doctor_view', {}).get('urgency_level') == urgency_filter]
+        
+    if language_filter:
+        cases_list = [c for c in cases_list if c.get('raw_data') and c.get('raw_data').get('language') == language_filter]
 
     doctor_info = get_user_by_id(doctor_id)
     return render_template(
@@ -653,6 +724,7 @@ def doctor_dashboard():
         doctor=doctor_info,
         t=translations,
         lang=lang_code,
+        filters={'search': search_query, 'urgency': urgency_filter, 'language': language_filter}
     )
 
 
@@ -675,6 +747,72 @@ def doctor_view(case_id):
     )
 
 
+@app.route("/doctor/edit/<case_id>", methods=["GET", "POST"])
+@login_required
+@doctor_required
+def doctor_edit(case_id):
+    lang_code = get_language()
+    translations = get_translations(lang_code)
+
+    doctor_id = session.get("user_id")
+    case = get_case_by_id(case_id)
+
+    if not case or case["doctor_id"] != str(doctor_id):
+        flash("Case not found or access denied.", "danger")
+        return redirect(url_for("doctor_dashboard"))
+
+    if request.method == "POST":
+        try:
+            # Update case in DB
+            case_obj = Case.query.get(case_id)
+            new_analysis = dict(case_obj.ai_analysis)
+
+            # Get updated lists from form
+            new_analysis["doctor_view"]["subjective_list"] = request.form.getlist(
+                "subjective[]"
+            )
+            new_analysis["doctor_view"]["objective_list"] = request.form.getlist(
+                "objective[]"
+            )
+            new_analysis["doctor_view"]["assessment_list"] = request.form.getlist(
+                "assessment[]"
+            )
+            new_analysis["doctor_view"]["plan_list"] = request.form.getlist("plan[]")
+
+            # Mark as modified for SQLAlchemy to detect changes in JSON
+            from sqlalchemy.orm.attributes import flag_modified
+
+            case_obj.ai_analysis = new_analysis
+            flag_modified(case_obj, "ai_analysis")
+
+            db.session.commit()
+
+            log_audit_action("edit_case", case_id)
+            flash("Case updated successfully.", "success")
+            return redirect(url_for("doctor_view", case_id=case_id))
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error updating case: {e}")
+            flash(f"Error updating case: {str(e)}", "danger")
+
+    return render_template(
+        "doctor_edit.html", case=case, t=translations, lang=lang_code
+    )
+
+
+@app.route("/admin/logs")
+@login_required
+@doctor_required
+def admin_logs():
+    lang_code = get_language()
+    translations = get_translations(lang_code)
+
+    logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).all()
+    return render_template(
+        "admin_logs.html", logs=logs, t=translations, lang=lang_code
+    )
+
+
 @app.route("/doctor/logout")
 def doctor_logout():
     session.clear()
@@ -691,6 +829,11 @@ def view_cases():
 
     user_id = session.get("user_id")
     role = session.get("role")
+    
+    search_query = request.args.get('search', '')
+    urgency_filter = request.args.get('urgency', '')
+    language_filter = request.args.get('language', '')
+    doctor_filter = request.args.get('doctor', '')
 
     if role == "doctor":
         cases_list = get_cases_for_doctor(user_id)
@@ -700,8 +843,28 @@ def view_cases():
         flash("Invalid role.", "danger")
         return redirect(url_for("landing"))
 
+    # Apply filters
+    if search_query:
+        search_query = search_query.lower()
+        cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
+        
+    if urgency_filter:
+        cases_list = [c for c in cases_list if c.get('ai_analysis') and c.get('ai_analysis').get('doctor_view', {}).get('urgency_level') == urgency_filter]
+        
+    if language_filter:
+        cases_list = [c for c in cases_list if c.get('raw_data') and c.get('raw_data').get('language') == language_filter]
+        
+    if doctor_filter:
+        doctor_filter = doctor_filter.lower()
+        cases_list = [c for c in cases_list if c.get('raw_data') and doctor_filter in c.get('raw_data').get('doctor_name', '').lower()]
+
     return render_template(
-        "cases.html", cases=cases_list, role=role, t=translations, lang=lang_code
+        "cases.html", 
+        cases=cases_list, 
+        role=role, 
+        t=translations, 
+        lang=lang_code,
+        filters={'search': search_query, 'urgency': urgency_filter, 'language': language_filter, 'doctor': doctor_filter}
     )
 
 
