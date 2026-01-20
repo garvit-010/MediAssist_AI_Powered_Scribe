@@ -208,7 +208,8 @@ OUTPUT FORMAT: Return ONLY valid JSON. Do not include markdown formatting like `
     "summary": "Warm explanation in {language}.",
     "pathophysiology": "Simple analogy in {language}.",
     "care_plan": ["Step 1", "Step 2"],
-    "red_flags": ["Sign 1", "Sign 2"]
+    "red_flags": ["Sign 1", "Sign 2"],
+    "severity_score": 5  // Integer 1-10 (1=Mild, 10=Emergency)
   }},
   "doctor_view": {{
     "subjective": "Medical terminology summary of HPI.",
@@ -361,6 +362,7 @@ def build_predefined_ai_analysis(language, raw_data):
                 "Severe headache or confusion",
                 "Shortness of breath or chest pain",
             ],
+            "severity_score": 3,  # <--- NEW FIELD
         },
         "doctor_view": {
             "subjective": (
