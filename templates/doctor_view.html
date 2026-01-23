@@ -269,6 +269,9 @@
             ><br />
             <span style="font-size: 1.2rem; margin-top: 0.5rem; display: block">
               {{ case.ai_analysis.patient_view.primary_diagnosis | safe }}
+              {% if case.ai_analysis.doctor_view.icd10_code %}
+                 <span class="badge bg-primary ms-2">ICD-10: {{ case.ai_analysis.doctor_view.icd10_code }}</span>
+              {% endif %}
             </span>
           </div>
 

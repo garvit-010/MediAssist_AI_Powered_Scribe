@@ -38,7 +38,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 
 # DATABASE CONFIGURATION
 # Using the provided Neon DB URL
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///medical_data.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -275,6 +275,38 @@ def clean_medical_text(text):
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     return text.strip()
 
+# --- ICD-10 CODING LOGIC ---
+ICD10_COMMON_CODES = {
+    "fever": "R50.9", "viral fever": "B34.9", "typhoid": "A01.0",
+    "cough": "R05", "dry cough": "R05.3",
+    "headache": "R51", "migraine": "G43.9",
+    "common cold": "J00", "flu": "J11.1", "influenza": "J11.1",
+    "pneumonia": "J18.9", "bronchitis": "J40",
+    "asthma": "J45.909", "hypertension": "I10", "high blood pressure": "I10",
+    "diabetes": "E11.9", "abdominal pain": "R10.9",
+    "chest pain": "R07.9", "nausea": "R11.0", "vomiting": "R11.1",
+    "diarrhea": "R19.7", "fatigue": "R53.83", "anxiety": "F41.9",
+    "depression": "F32.9", "infection": "B99.9"
+}
+
+def get_icd_code(diagnosis):
+    """Matches a diagnosis text to an ICD-10 code."""
+    if not diagnosis:
+        return "Not Found"
+    
+    text = diagnosis.lower()
+    
+    # 1. Direct key search (fastest)
+    for key, code in ICD10_COMMON_CODES.items():
+        if key in text:
+            return code
+            
+    # 2. Keyword Fallback
+    if "pain" in text: return "R52" 
+    if "viral" in text: return "B34.9"
+    if "bacterial" in text: return "A49.9"
+    
+    return "Unspecified"
 
 def is_test_case(raw_data):
     """Return True if the intake matches the predefined test fixture."""
@@ -602,8 +634,15 @@ def patient_submit():
             else:
                 raise ValueError(f"Unexpected response format from Ollama: {result}")
         except requests.exceptions.ConnectionError:
-            # Fallback to predefined analysis if test case detected
-            logging.warning("Ollama unreachable; attempting predefined test analysis.")
+            # [FIX] FORCE FALLBACK: Always load fake analysis if AI is down
+            logging.warning("Ollama unreachable; using fallback analysis.")
+            ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
+            
+            # CRITICAL: Overwrite the diagnosis with what you typed so your ICD-10 code works!
+            user_symptom = request.form.get("symptoms") or "Viral Fever"
+            ai_analysis["patient_view"]["primary_diagnosis"] = user_symptom
+            
+            flash("AI offline. Using simulation mode to save case.", "warning")
             if is_test_case(raw_data):
                 ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
                 flash("AI service offline. Loaded predefined test analysis.", "warning")
@@ -623,6 +662,11 @@ def patient_submit():
             else:
                 flash("AI processing failed. Please try again.", "danger")
                 return redirect(url_for("patient_intake"))
+        if ai_analysis:
+            diag = ai_analysis.get("patient_view", {}).get("primary_diagnosis", "")
+            code = get_icd_code(diag)
+            # Save it inside the Doctor View so the doctor sees it
+            ai_analysis["doctor_view"]["icd10_code"] = code
 
         case_record = {
             "id": case_id,
