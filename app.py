@@ -528,6 +528,14 @@ def patient_intake():
 def patient_submit():
     start_time = time.time()
     try:
+        symptoms = request.form.get("symptoms", "").strip()
+        if not symptoms or len(symptoms) < 10:
+            flash("Please provide more detail in symptoms (at least 10 characters).", "danger")
+            return redirect(url_for("patient_intake"))
+        
+        if len(symptoms) > 1000:
+            flash("Symptoms description is too long (max 1000 characters).", "danger")
+            return redirect(url_for("patient_intake"))
         case_id = str(uuid.uuid4())[:8].upper()
         selected_language = request.form.get("language", "English")
         doctor_id_str = request.form.get("doctor_id")
