@@ -120,6 +120,15 @@ Start the Flask development server:
 python app.py
 ```
 
+## 🐳 Docker Support
+
+To run the application using Docker:
+
+1. **Build and Run:**
+   ```bash
+   docker-compose up --build
+   ```
+
 Access the application at `http://127.0.0.1:5000`.
 
 ## Demo Workflow
