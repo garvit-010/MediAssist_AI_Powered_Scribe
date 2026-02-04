@@ -144,6 +144,36 @@
       .alert-danger h5 {
         color: #991b1b;
       }
+
+      /* NER Highlight Badges */
+      .entity-med {
+        background-color: #fee2e2;
+        color: #991b1b;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        border: 1px solid #fecaca;
+        display: inline-block;
+      }
+      .entity-condition {
+        background-color: #e0f2fe;
+        color: #075985;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        border: 1px solid #bae6fd;
+        display: inline-block;
+      }
+      .entity-dosage {
+        background-color: #f3f4f6;
+        color: #374151;
+        padding: 0px 4px;
+        border-radius: 4px;
+        font-weight: 600;
+        border: 1px solid #d1d5db;
+        font-size: 0.9em;
+      }
+
     </style>
   </head>
 
@@ -341,7 +371,7 @@
             </span>
             <ul class="soap-list">
               {% for item in case.ai_analysis.doctor_view.subjective_list %}
-              <li>{{ item | safe }}</li>
+              <li>{{ item | ner_highlight | safe }}</li>
               {% endfor %}
             </ul>
             <div class="vitals-box mt-3">
@@ -367,7 +397,7 @@
             </span>
             <ul class="soap-list">
               {% for item in case.ai_analysis.doctor_view.objective_list %}
-              <li>{{ item | safe }}</li>
+              <li>{{ item | ner_highlight | safe }}</li>
               {% endfor %}
             </ul>
             <div class="vitals-box mt-3">
@@ -412,7 +442,7 @@
 
             <ul class="soap-list">
               {% for item in case.ai_analysis.doctor_view.assessment_list %}
-              <li>{{ item | safe }}</li>
+              <li>{{ item | ner_highlight | safe }}</li>
               {% endfor %}
             </ul>
           </div>
@@ -425,7 +455,7 @@
             </span>
             <ul class="soap-list">
               {% for item in case.ai_analysis.doctor_view.plan_list %}
-              <li>{{ item | safe }}</li>
+              <li>{{ item | ner_highlight | safe }}</li>
               {% endfor %}
             </ul>
           </div>
