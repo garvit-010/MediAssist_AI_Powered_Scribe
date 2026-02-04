@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import csv
+import tempfile 
 from datetime import datetime
 from flask import (
     Flask,
@@ -21,9 +22,20 @@ import requests
 from dotenv import load_dotenv
 from functools import wraps
 from flask_sqlalchemy import SQLAlchemy
+import whisper # [NEW] Import Whisper
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 app = Flask(__name__)
+
+# [NEW] Load Whisper Model (Base model is ~150MB and runs fast on CPU)
+# We load it globally so we don't reload it on every request
+try:
+    print("Loading Whisper model... this may take a moment.")
+    audio_model = whisper.load_model("base")
+    print("Whisper model loaded successfully.")
+except Exception as e:
+    logging.error(f"Failed to load Whisper model: {e}")
+    audio_model = None
 
 # Load translation files
 TRANSLATIONS = {}
@@ -552,6 +564,47 @@ def patient_intake():
     return render_template(
         "intake.html", doctors=doctor_list, t=translations, lang=lang_code
     )
+
+
+# [NEW] Voice Transcription Endpoint
+@app.route("/transcribe", methods=["POST"])
+@login_required
+@patient_required
+def transcribe_audio():
+    if "audio" not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+    
+    if not audio_model:
+        return jsonify({"error": "Transcriber model not loaded on server."}), 503
+
+    audio_file = request.files["audio"]
+    if audio_file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    try:
+        # Create a temporary file to save the uploaded audio
+        # Whisper requires a file path (or a file-like object that it supports)
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_audio:
+            temp_path = temp_audio.name
+            audio_file.save(temp_path)
+        
+        # Transcribe
+        # You can add language='en' or 'hi' if you want to force it, 
+        # or let Whisper detect it.
+        result = audio_model.transcribe(temp_path)
+        transcribed_text = result["text"].strip()
+        
+        # Clean up temp file
+        os.remove(temp_path)
+        
+        return jsonify({"text": transcribed_text})
+        
+    except Exception as e:
+        logging.error(f"Transcription error: {e}")
+        # Try to clean up if we failed
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.remove(temp_path)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/patient/submit", methods=["POST"])

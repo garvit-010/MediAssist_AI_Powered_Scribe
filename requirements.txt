@@ -6,4 +6,4 @@ python-dotenv
 flask_sqlalchemy
 werkzeug
 psycopg2-binary
-gunicorn
+openai-whisper
