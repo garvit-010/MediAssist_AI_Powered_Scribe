@@ -24,6 +24,10 @@ from functools import wraps
 from flask_sqlalchemy import SQLAlchemy
 import whisper # [NEW] Import Whisper
 
+# --- NEW IMPORTS FOR ENCRYPTION ---
+from cryptography.fernet import Fernet
+from sqlalchemy.types import TypeDecorator, String, Text
+
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 app = Flask(__name__)
 
@@ -39,17 +43,54 @@ except Exception as e:
 
 # Load translation files
 TRANSLATIONS = {}
+# --- NER HIGHLIGHTING SETUP ---
+# Defines the entities we want to auto-highlight in the UI
+NER_MEDICATIONS = [
+    "Paracetamol", "Ibuprofen", "Aspirin", "Metformin", "Amoxicillin", 
+    "Lisinopril", "Atorvastatin", "Albuterol", "Tylenol", "Advil"
+]
+NER_CONDITIONS = [
+    "Viral Fever", "Migraine", "Diabetes", "Hypertension", "Asthma", 
+    "Pneumonia", "Bronchitis", "Covid-19", "Influenza", "Headache", 
+    "Fever", "Infection", "Nausea"
+]
+
+def highlight_entities(text):
+    """
+    Scans text for medical entities and wraps them in colorful HTML badges.
+    This acts as a lightweight NER (Named Entity Recognition) pipeline.
+    """
+    if not text: return ""
+    
+    # 1. Highlight Dosages (e.g., 500 mg, 10ml) -> Gray Badge
+    # Regex looks for numbers followed by units like mg, ml, g, kg
+    text = re.sub(r'(\d+\s?(mg|ml|g|kg|mcg))', r'<span class="entity-dosage">\1</span>', text, flags=re.IGNORECASE)
+
+    # 2. Highlight Medications -> Red Badge
+    for med in NER_MEDICATIONS:
+        # \b ensures we match whole words only (e.g., avoid matching "corn" in "popcorn")
+        pattern = re.compile(r'\b(' + re.escape(med) + r')\b', re.IGNORECASE)
+        text = pattern.sub(r'<span class="entity-med">\1</span>', text)
+        
+    # 3. Highlight Conditions -> Blue Badge
+    for cond in NER_CONDITIONS:
+        pattern = re.compile(r'\b(' + re.escape(cond) + r')\b', re.IGNORECASE)
+        text = pattern.sub(r'<span class="entity-condition">\1</span>', text)
+        
+    return text
+
+# Register the filter so we can use it in HTML as {{ text | ner_highlight }}
+app.jinja_env.filters['ner_highlight'] = highlight_entities
 TRANSLATIONS_DIR = os.path.join(os.path.dirname(__file__), "translations")
 for lang_code in ["en", "hi"]:
     lang_file = os.path.join(TRANSLATIONS_DIR, f"{lang_code}.json")
     if os.path.exists(lang_file):
         with open(lang_file, "r", encoding="utf-8") as f:
             TRANSLATIONS[lang_code] = json.load(f)
-# Secret key is required for session management (Doctor Login) and flash messages
+
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
 
 # DATABASE CONFIGURATION
-# Using the provided Neon DB URL
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///medical_data.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -59,9 +100,48 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Llama 3 Configuration
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 
+# --- ENCRYPTION SETUP ---
+# We retrieve the key from .env. If missing, we warn but don't crash immediately (unless used).
+FERNET_KEY = os.getenv("FERNET_KEY")
+cipher_suite = Fernet(FERNET_KEY) if FERNET_KEY else None
+
+class EncryptedString(TypeDecorator):
+    """
+    Custom TypeDecorator that encrypts data before saving to DB 
+    and decrypts it when retrieving.
+    Includes 'Safe Read' fallback for legacy unencrypted data.
+    """
+    impl = Text  # Use Text to accommodate larger encrypted strings
+
+    def process_bind_param(self, value, dialect):
+        """Encrypt before writing to DB."""
+        if value is None:
+            return None
+        if not cipher_suite:
+            logging.error("FERNET_KEY missing! Saving plain text.")
+            return value
+        try:
+            # Encrypt string -> bytes -> encoded string
+            return cipher_suite.encrypt(value.encode("utf-8")).decode("utf-8")
+        except Exception as e:
+            logging.error(f"Encryption failed: {e}")
+            return value
+
+    def process_result_value(self, value, dialect):
+        """Decrypt after reading from DB."""
+        if value is None:
+            return None
+        if not cipher_suite:
+            return value
+        try:
+            # Decode string -> bytes -> decrypt -> string
+            return cipher_suite.decrypt(value.encode("utf-8")).decode("utf-8")
+        except Exception:
+            # FALLBACK: If decryption fails, assume data is legacy (plain text)
+            # This prevents crashes on existing unencrypted rows.
+            return value
 
 # MODELS
 class User(db.Model):
@@ -69,17 +149,19 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)
-    full_name = db.Column(db.String(100))
+    
+    # [SECURE] Applied Encryption to PII
+    full_name = db.Column(EncryptedString) 
+    
     specialty = db.Column(db.String(100), nullable=True)
     doctor_unique_id = db.Column(db.String(50), nullable=True)
 
-    # Relationships
     def to_dict(self):
         return {
             "id": self.id,
             "username": self.username,
             "role": self.role,
-            "full_name": self.full_name,
+            "full_name": self.full_name, # Auto-decrypted on access
             "password_hash": self.password_hash,
             "specialty": self.specialty,
         }
@@ -90,7 +172,12 @@ class Case(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Note: 'raw_data' is JSON. We are not encrypting the whole JSON column 
+    # as it would break JSON querying capabilities. 
+    # PII inside here should be minimized in future updates.
     raw_data = db.Column(db.JSON)
+    
     ai_analysis = db.Column(db.JSON)
     status = db.Column(db.String(50), default="Pending Review")
 
@@ -120,7 +207,9 @@ class ClinicalLog(db.Model):
     case_id = db.Column(db.String(50), db.ForeignKey("case.id"))
     model = db.Column(db.String(50))
     latency_ms = db.Column(db.Float)
-    symptoms_snippet = db.Column(db.Text)
+    
+    # [SECURE] Encrypting symptoms snippet as it contains sensitive health info
+    symptoms_snippet = db.Column(EncryptedString)
 
 
 class AuditLog(db.Model):
@@ -139,8 +228,9 @@ with app.app_context():
 
 # HELPER FUNCTIONS (Refactored to use DB)
 
-
 def get_user_by_username(username):
+    # Note: Cannot search efficiently on Encrypted columns using standard SQL
+    # This filter relies on 'username' which is NOT encrypted (safe for lookup)
     user = User.query.filter_by(username=username).first()
     return user.to_dict() if user else None
 
@@ -406,7 +496,7 @@ def build_predefined_ai_analysis(language, raw_data):
                 "Severe headache or confusion",
                 "Shortness of breath or chest pain",
             ],
-            "severity_score": 3,  # <--- NEW FIELD
+            "severity_score": 3,
         },
         "doctor_view": {
             "subjective": (
@@ -482,13 +572,11 @@ def log_audit_action(action, case_id=None, user_id=None):
         db.session.add(new_log)
         db.session.commit()
 
-        # Also log to standard logging for visibility
         if user_id == session.get("user_id"):
             username = (
                 session.get("account_name") or session.get("name") or f"User {user_id}"
             )
         else:
-            # If we're logging for a different user (e.g. attributing summary to doctor)
             user = get_user_by_id(user_id)
             username = user["full_name"] if user else f"User {user_id}"
             
@@ -503,7 +591,6 @@ def log_audit_action(action, case_id=None, user_id=None):
 
 
 # ROUTES
-
 
 @app.route("/")
 def landing():
@@ -521,7 +608,6 @@ def landing():
 
 # PATIENT ROUTES
 
-
 @app.route("/patient/login", methods=["GET", "POST"])
 def patient_login():
     lang_code = get_language()
@@ -533,7 +619,6 @@ def patient_login():
 
         user = get_user_by_username(username)
 
-        # Use user dictionary
         if (
             user
             and user["role"] == "patient"
@@ -556,7 +641,6 @@ def patient_intake():
     translations = get_translations(lang_code)
 
     doctors = get_all_doctors()
-    # Doctors are already dictionaries
     doctor_list = [
         {"id": d["id"], "name": d["full_name"], "specialty": d["specialty"]}
         for d in doctors
@@ -658,9 +742,7 @@ def patient_submit():
             "language": selected_language,
         }
 
-        # Log initial case creation immediately
         log_audit_action("case_creation", case_id)
-        # db.session.commit() # Already committed inside log_audit_action
 
         formatted_prompt = SYSTEM_PROMPT.format(language=selected_language)
         prompt = (
@@ -669,7 +751,6 @@ def patient_submit():
 
         ai_analysis = None
         try:
-            # Call Local Llama 3 via Ollama
             response = requests.post(
                 OLLAMA_API_URL,
                 json={
@@ -696,15 +777,7 @@ def patient_submit():
             ai_analysis["patient_view"]["primary_diagnosis"] = user_symptom
             
             flash("AI offline. Using simulation mode to save case.", "warning")
-            if is_test_case(raw_data):
-                ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
-                flash("AI service offline. Loaded predefined test analysis.", "warning")
-            else:
-                flash(
-                    "AI Service unavailable. Please ensure local Llama 3 (Ollama) is running.",
-                    "danger",
-                )
-                return redirect(url_for("patient_intake"))
+            # We removed the restriction. Now ANY user can proceed without AI.
         except Exception as e:
             logging.error(f"Llama 3 Generation or Parsing Failed: {e}")
             if is_test_case(raw_data):
@@ -718,7 +791,6 @@ def patient_submit():
         if ai_analysis:
             diag = ai_analysis.get("patient_view", {}).get("primary_diagnosis", "")
             code = get_icd_code(diag)
-            # Save it inside the Doctor View so the doctor sees it
             ai_analysis["doctor_view"]["icd10_code"] = code
 
         case_record = {
@@ -732,7 +804,6 @@ def patient_submit():
         }
         add_case(case_record)
 
-        # Log summary generation - attribute to the assigned doctor as per clinical workflow
         log_audit_action("generate_summary", case_id, user_id=doctor_id)
 
         log_interaction(case_id, raw_data, time.time() - start_time)
@@ -806,14 +877,12 @@ def doctor_dashboard():
 
     doctor_id = session.get("user_id")
     
-    # Get filters from query params
     search_query = request.args.get('search', '')
     urgency_filter = request.args.get('urgency', '')
     language_filter = request.args.get('language', '')
     
     cases_list = get_cases_for_doctor(doctor_id)
     
-    # Apply filters in Python
     if search_query:
         search_query = search_query.lower()
         cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
@@ -870,11 +939,9 @@ def doctor_edit(case_id):
 
     if request.method == "POST":
         try:
-            # Update case in DB
             case_obj = Case.query.get(case_id)
             new_analysis = dict(case_obj.ai_analysis)
 
-            # Get updated lists from form
             new_analysis["doctor_view"]["subjective_list"] = request.form.getlist(
                 "subjective[]"
             )
@@ -886,7 +953,6 @@ def doctor_edit(case_id):
             )
             new_analysis["doctor_view"]["plan_list"] = request.form.getlist("plan[]")
 
-            # Mark as modified for SQLAlchemy to detect changes in JSON
             from sqlalchemy.orm.attributes import flag_modified
 
             case_obj.ai_analysis = new_analysis
@@ -950,7 +1016,6 @@ def view_cases():
         flash("Invalid role.", "danger")
         return redirect(url_for("landing"))
 
-    # Apply filters
     if search_query:
         search_query = search_query.lower()
         cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
