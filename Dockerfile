@@ -8,6 +8,7 @@ WORKDIR /app
 # gcc is often needed for python packages
 RUN apt-get update && apt-get install -y \
     gcc \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first
