@@ -31,6 +31,44 @@ app = Flask(__name__)
 
 # Load translation files
 TRANSLATIONS = {}
+# --- NER HIGHLIGHTING SETUP ---
+# Defines the entities we want to auto-highlight in the UI
+NER_MEDICATIONS = [
+    "Paracetamol", "Ibuprofen", "Aspirin", "Metformin", "Amoxicillin", 
+    "Lisinopril", "Atorvastatin", "Albuterol", "Tylenol", "Advil"
+]
+NER_CONDITIONS = [
+    "Viral Fever", "Migraine", "Diabetes", "Hypertension", "Asthma", 
+    "Pneumonia", "Bronchitis", "Covid-19", "Influenza", "Headache", 
+    "Fever", "Infection", "Nausea"
+]
+
+def highlight_entities(text):
+    """
+    Scans text for medical entities and wraps them in colorful HTML badges.
+    This acts as a lightweight NER (Named Entity Recognition) pipeline.
+    """
+    if not text: return ""
+    
+    # 1. Highlight Dosages (e.g., 500 mg, 10ml) -> Gray Badge
+    # Regex looks for numbers followed by units like mg, ml, g, kg
+    text = re.sub(r'(\d+\s?(mg|ml|g|kg|mcg))', r'<span class="entity-dosage">\1</span>', text, flags=re.IGNORECASE)
+
+    # 2. Highlight Medications -> Red Badge
+    for med in NER_MEDICATIONS:
+        # \b ensures we match whole words only (e.g., avoid matching "corn" in "popcorn")
+        pattern = re.compile(r'\b(' + re.escape(med) + r')\b', re.IGNORECASE)
+        text = pattern.sub(r'<span class="entity-med">\1</span>', text)
+        
+    # 3. Highlight Conditions -> Blue Badge
+    for cond in NER_CONDITIONS:
+        pattern = re.compile(r'\b(' + re.escape(cond) + r')\b', re.IGNORECASE)
+        text = pattern.sub(r'<span class="entity-condition">\1</span>', text)
+        
+    return text
+
+# Register the filter so we can use it in HTML as {{ text | ner_highlight }}
+app.jinja_env.filters['ner_highlight'] = highlight_entities
 TRANSLATIONS_DIR = os.path.join(os.path.dirname(__file__), "translations")
 for lang_code in ["en", "hi"]:
     lang_file = os.path.join(TRANSLATIONS_DIR, f"{lang_code}.json")
