@@ -6,6 +6,7 @@ import logging
 import re
 import csv
 import tempfile 
+from datetime import timedelta
 from datetime import datetime
 from flask import (
     Flask,
@@ -30,6 +31,18 @@ from sqlalchemy.types import TypeDecorator, String, Text
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 app = Flask(__name__)
+
+# [NEW] HIPAA Security Configuration (Issue #44)
+# 1. Timeout: Auto-logout after 15 minutes of inactivity
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
+
+# 2. Cookies: Protect session ID from theft
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # JavaScript cannot access the cookie (Prevents XSS)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # Prevents CSRF
+
+# NOTE: 'Secure' requires HTTPS. If running locally on HTTP, this might block login. 
+# We set it to True to meet the requirement, but if login fails locally, set to False.
+app.config['SESSION_COOKIE_SECURE'] = True
 
 # [NEW] Load Whisper Model (Base model is ~150MB and runs fast on CPU)
 # We load it globally so we don't reload it on every request
@@ -591,6 +604,16 @@ def log_audit_action(action, case_id=None, user_id=None):
 
 
 # ROUTES
+
+@app.before_request
+def make_session_permanent():
+    """
+    Sliding Window: Resets the session expiration on every request.
+    If the user is active, they won't be logged out.
+    If they are idle for 15 mins, the session dies.
+    """
+    session.permanent = True
+    app.permanent_session_lifetime = timedelta(minutes=15)
 
 @app.route("/")
 def landing():
