@@ -23,6 +23,8 @@ from dotenv import load_dotenv
 from functools import wraps
 from flask_sqlalchemy import SQLAlchemy
 import whisper # [NEW] Import Whisper
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # --- NEW IMPORTS FOR ENCRYPTION ---
 from cryptography.fernet import Fernet
@@ -30,6 +32,22 @@ from sqlalchemy.types import TypeDecorator, String, Text
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 app = Flask(__name__)
+
+# [NEW] Setup Rate Limiter
+# storage_uri="memory://" uses RAM to track limits (simplest for local dev)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+# [NEW] Custom Error Handler for Rate Limit
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    flash("You are generating reports too fast. Please wait a minute before trying again.", "danger")
+    # Redirect back to the previous page (likely the intake form)
+    return redirect(request.referrer or url_for("patient_intake"))
 
 # [NEW] Load Whisper Model (Base model is ~150MB and runs fast on CPU)
 # We load it globally so we don't reload it on every request
@@ -694,6 +712,7 @@ def transcribe_audio():
 @app.route("/patient/submit", methods=["POST"])
 @login_required
 @patient_required
+@limiter.limit("5 per minute")
 def patient_submit():
     start_time = time.time()
     try:
