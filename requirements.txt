@@ -10,3 +10,4 @@ openai-whisper
 cryptography
 
 fpdf
+Flask-Limiter
