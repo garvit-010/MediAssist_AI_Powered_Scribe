@@ -8,3 +8,5 @@ werkzeug
 psycopg2-binary
 openai-whisper
 cryptography
+
+fpdf
