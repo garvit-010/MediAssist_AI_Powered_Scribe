@@ -8,3 +8,4 @@ werkzeug
 psycopg2-binary
 openai-whisper
 cryptography
+Flask-Limiter
