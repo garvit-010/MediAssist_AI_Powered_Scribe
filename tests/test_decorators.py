@@ -141,47 +141,33 @@ class TestPDFReport:
             assert True
 
 
-class TestLogInteraction:
-    """Tests for the log_interaction function."""
+class TestLogAIInteraction:
+    """Tests for the log_ai_interaction function."""
 
-    def test_log_interaction_creates_entry(self, app: Flask) -> None:
-        """Test that log_interaction creates a clinical log entry."""
+    def test_log_ai_interaction_creates_entry(self, app: Flask) -> None:
+        """Test that log_ai_interaction creates an AI log entry."""
         with app.app_context():
-            from app import log_interaction, ClinicalLog, db
+            from app import log_ai_interaction, AILog, db
 
             # Clear existing logs
-            ClinicalLog.query.delete()
+            AILog.query.delete()
             db.session.commit()
 
-            log_interaction(
+            log_ai_interaction(
                 case_id="LOGTEST1",
-                inputs={"symptoms": "Test symptoms for logging"},
-                latency=0.5,
+                model="llama3",
+                latency_ms=500.0,
+                status="success",
+                prompt_tokens=100,
+                completion_tokens=50
             )
 
-            log = ClinicalLog.query.filter_by(case_id="LOGTEST1").first()
+            log = AILog.query.filter_by(case_id="LOGTEST1").first()
             assert log is not None
             assert log.model == "llama3"
             assert log.latency_ms == 500.0
-
-    def test_log_interaction_truncates_symptoms(self, app: Flask) -> None:
-        """Test that symptoms are truncated to 50 characters."""
-        with app.app_context():
-            from app import log_interaction, ClinicalLog, db
-
-            ClinicalLog.query.delete()
-            db.session.commit()
-
-            long_symptoms = "A" * 100  # 100 characters
-            log_interaction(
-                case_id="LOGTEST2",
-                inputs={"symptoms": long_symptoms},
-                latency=0.25,
-            )
-
-            log = ClinicalLog.query.filter_by(case_id="LOGTEST2").first()
-            assert log is not None
-            assert len(log.symptoms_snippet) <= 50
+            assert log.total_tokens == 150
+            assert log.status == "success"
 
 
 class TestLogAuditAction:
@@ -207,14 +193,18 @@ class TestLogAuditAction:
             db.session.commit()
 
             result = log_audit_action(
-                action="test_action", case_id="AUDIT001", user_id=user.id
+                action="test_action",
+                resource_type="case",
+                resource_id="AUDIT001",
+                user_id=user.id
             )
 
             assert result is True
 
             log = AuditLog.query.filter_by(action="test_action").first()
             assert log is not None
-            assert log.case_id == "AUDIT001"
+            assert log.resource_id == "AUDIT001"
+            assert log.resource_type == "case"
 
     def test_log_audit_action_without_user_id(
         self, authenticated_doctor_session: FlaskClient, app: Flask

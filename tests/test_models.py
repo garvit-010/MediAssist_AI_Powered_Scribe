@@ -168,28 +168,33 @@ class TestCaseModel:
             assert "ai_analysis" in case_dict
 
 
-class TestClinicalLogModel:
-    """Tests for the ClinicalLog model."""
+class TestAILogModel:
+    """Tests for the AILog model."""
 
-    def test_create_clinical_log(self, app: Flask) -> None:
-        """Test creating a clinical log entry."""
-        from app import db, ClinicalLog
+    def test_create_ai_log(self, app: Flask) -> None:
+        """Test creating an AI log entry."""
+        from app import db, AILog
 
         with app.app_context():
-            log = ClinicalLog(
+            log = AILog(
                 case_id="LOG001",
                 model="llama3",
-                latency_ms=250.5,
-                symptoms_snippet="Fever and headache",
+                latency_ms=1200.5,
+                prompt_tokens=100,
+                completion_tokens=50,
+                total_tokens=150,
+                cost=0.00003,
+                status="success"
             )
             db.session.add(log)
             db.session.commit()
 
-            retrieved = ClinicalLog.query.filter_by(case_id="LOG001").first()
+            retrieved = AILog.query.filter_by(case_id="LOG001").first()
             assert retrieved is not None
             assert retrieved.model == "llama3"
-            assert retrieved.latency_ms == 250.5
-            assert retrieved.symptoms_snippet == "Fever and headache"
+            assert retrieved.latency_ms == 1200.5
+            assert retrieved.total_tokens == 150
+            assert retrieved.status == "success"
 
 
 class TestAuditLogModel:
@@ -213,7 +218,8 @@ class TestAuditLogModel:
             audit = AuditLog(
                 user_id=user.id,
                 action="view_case",
-                case_id="CASE001",
+                resource_type="case",
+                resource_id="CASE001",
             )
             db.session.add(audit)
             db.session.commit()
@@ -221,7 +227,8 @@ class TestAuditLogModel:
             retrieved = AuditLog.query.filter_by(action="view_case").first()
             assert retrieved is not None
             assert retrieved.user_id == user.id
-            assert retrieved.case_id == "CASE001"
+            assert retrieved.resource_id == "CASE001"
+            assert retrieved.resource_type == "case"
             assert retrieved.timestamp is not None
 
 

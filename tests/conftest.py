@@ -61,6 +61,14 @@ def client(app: Flask) -> FlaskClient:
 
 
 @pytest.fixture(scope="function")
+def db(app: Flask) -> Generator[Any, None, None]:
+    """Provide the database object for tests."""
+    from app import db as _db
+    with app.app_context():
+        yield _db
+
+
+@pytest.fixture(scope="function")
 def db_session(app: Flask) -> Generator[Any, None, None]:
     """Provide a transactional database session for tests."""
     from app import db
@@ -179,6 +187,62 @@ def authenticated_patient_session(
         sess["account_name"] = sample_user_data["full_name"]
 
     yield client
+
+
+@pytest.fixture
+def authenticated_patient(
+    client: FlaskClient, app: Flask, sample_user_data: dict[str, Any]
+) -> Generator[Any, None, None]:
+    """Create and return an authenticated patient user."""
+    from app import db, User
+    from werkzeug.security import generate_password_hash
+
+    with app.app_context():
+        user = User(
+            username=sample_user_data["username"] + "_unique",
+            password_hash=generate_password_hash(sample_user_data["password"]),
+            role="patient",
+            full_name=sample_user_data["full_name"],
+        )
+        db.session.add(user)
+        db.session.commit()
+        user_id = user.id
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = user_id
+            sess["role"] = "patient"
+            sess["account_name"] = sample_user_data["full_name"]
+
+        yield user
+
+
+@pytest.fixture
+def authenticated_doctor(
+    client: FlaskClient, app: Flask, sample_doctor_data: dict[str, Any]
+) -> Generator[Any, None, None]:
+    """Create and return an authenticated doctor user."""
+    from app import db, User
+    from werkzeug.security import generate_password_hash
+
+    with app.app_context():
+        user = User(
+            username=sample_doctor_data["username"] + "_unique",
+            password_hash=generate_password_hash(sample_doctor_data["password"]),
+            role="doctor",
+            full_name=sample_doctor_data["full_name"],
+            specialty=sample_doctor_data["specialty"],
+            doctor_unique_id=sample_doctor_data["doctor_unique_id"],
+        )
+        db.session.add(user)
+        db.session.commit()
+        user_id = user.id
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = user_id
+            sess["role"] = "doctor"
+            sess["account_name"] = sample_doctor_data["full_name"]
+
+        yield user
 
 
 @pytest.fixture

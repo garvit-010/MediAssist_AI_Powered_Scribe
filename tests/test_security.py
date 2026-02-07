@@ -3,8 +3,9 @@ from app import User, Case, EncryptedString
 from cryptography.fernet import Fernet
 import os
 
-def test_encryption_decryption(app, db):
+def test_encryption_decryption(app, db_session):
     with app.app_context():
+        from app import db
         # cipher_suite is now initialized in conftest.py
         user = User(
             username='secret_user',
@@ -12,12 +13,12 @@ def test_encryption_decryption(app, db):
             role='patient',
             full_name='Sensitive Name'
         )
-        db.session.add(user)
-        db.session.commit()
+        db_session.add(user)
+        db_session.commit()
         
         # Check DB directly to see if it's encrypted (not "Sensitive Name")
         from sqlalchemy import text
-        result = db.session.execute(text(f"SELECT full_name FROM user WHERE username='secret_user'")).fetchone()
+        result = db_session.execute(text(f"SELECT full_name FROM user WHERE username='secret_user'")).fetchone()
         assert result[0] != 'Sensitive Name'
         
         # Check if it decrypts automatically on access

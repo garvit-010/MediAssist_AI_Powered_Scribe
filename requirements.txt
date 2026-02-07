@@ -8,6 +8,8 @@ werkzeug
 psycopg2-binary
 openai-whisper
 cryptography
+flask-limiter
+fpdf
 pytest
 pytest-flask
 pytest-mock
