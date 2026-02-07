@@ -1072,6 +1072,7 @@ def patient_submit():
                     "stream": False,
                     "format": "json",
                 },
+                timeout=10,
             )
             response.raise_for_status()
             result = response.json()
@@ -1500,4 +1501,6 @@ def download_pdf(case_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Bandit B201: Do not run with debug=True in production
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
+    app.run(debug=debug_mode)
