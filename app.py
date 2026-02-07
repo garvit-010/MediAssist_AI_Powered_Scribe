@@ -1290,7 +1290,7 @@ def doctor_edit(case_id):
 
             db.session.commit()
 
-            log_audit_action("edit_case", case_id)
+            log_audit_action("edit_case", resource_type="case", resource_id=case_id)
             flash("Case updated successfully.", "success")
             return redirect(url_for("doctor_view", case_id=case_id))
         except Exception as e:
@@ -1495,7 +1495,7 @@ def download_pdf(case_id):
     save_path = os.path.join(tempfile.gettempdir(), filename)
     pdf.output(save_path)
 
-    log_audit_action("export_pdf", case_id)
+    log_audit_action("export_pdf", resource_type="case", resource_id=case_id)
 
     return send_file(save_path, as_attachment=True)
 
