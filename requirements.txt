@@ -8,6 +8,7 @@ werkzeug
 psycopg2-binary
 openai-whisper
 cryptography
-
-fpdf
-Flask-Limiter
+pytest
+pytest-flask
+pytest-mock
+pytest-cov
