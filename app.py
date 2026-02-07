@@ -1,70 +1,76 @@
-import os
-import time
-import uuid
+"""MediAssist - AI-Powered Clinical Scribe & Patient Communication System.
+
+This module provides the main Flask application for MediAssist, including:
+- User authentication and role-based access control
+- Patient intake and case management
+- AI-powered clinical analysis using Llama 3
+- Multi-language support (English/Hindi)
+- Audit logging and HIPAA-compliant security features
+"""
+
+from __future__ import annotations
+
 import json
 import logging
+import os
 import re
-import csv
-import tempfile 
-from datetime import timedelta
-from datetime import datetime
-from flask import (
-    Flask,
-    render_template,
-    request,
-    jsonify,
-    redirect,
-    url_for,
-    flash,
-    session,
-)
-from werkzeug.security import generate_password_hash, check_password_hash
-import requests
-from dotenv import load_dotenv
+import tempfile
+import time
+import uuid
+from datetime import datetime, timedelta
 from functools import wraps
-from flask_sqlalchemy import SQLAlchemy
-import whisper # [NEW] Import Whisper
-from fpdf import FPDF
-from flask import send_file
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar, cast
+
+import requests
+import whisper
+from cryptography.fernet import Fernet
+from dotenv import load_dotenv
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_sqlalchemy import SQLAlchemy
+from fpdf import FPDF
+from sqlalchemy.types import Text, TypeDecorator
+from werkzeug.security import check_password_hash
+from werkzeug.wrappers import Response as WerkzeugResponse
 
-# --- NEW IMPORTS FOR ENCRYPTION ---
-from cryptography.fernet import Fernet
-from sqlalchemy.types import TypeDecorator, String, Text
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Dialect
+
+# Type variable for decorator functions
+F = TypeVar("F", bound=Callable[..., Any])
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 app = Flask(__name__)
 
 # [NEW] HIPAA Security Configuration (Issue #44)
 # 1. Timeout: Auto-logout after 15 minutes of inactivity
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=15)
 
 # 2. Cookies: Protect session ID from theft
-app.config['SESSION_COOKIE_HTTPONLY'] = True  # JavaScript cannot access the cookie (Prevents XSS)
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' # Prevents CSRF
+app.config["SESSION_COOKIE_HTTPONLY"] = True  # JavaScript cannot access the cookie (Prevents XSS)
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Prevents CSRF
 
-# NOTE: 'Secure' requires HTTPS. If running locally on HTTP, this might block login. 
+# NOTE: 'Secure' requires HTTPS. If running locally on HTTP, this might block login.
 # We set it to True to meet the requirement, but if login fails locally, set to False.
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config["SESSION_COOKIE_SECURE"] = True
 # [NEW] Setup Rate Limiter
 # storage_uri="memory://" uses RAM to track limits (simplest for local dev)
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"], storage_uri="memory://")
+
 
 # [NEW] Custom Error Handler for Rate Limit
 @app.errorhandler(429)
-def ratelimit_handler(e):
+def ratelimit_handler(e: Exception) -> WerkzeugResponse:
+    """Handle rate limit exceeded errors."""
     flash("You are generating reports too fast. Please wait a minute before trying again.", "danger")
     # Redirect back to the previous page (likely the intake form)
     return redirect(request.referrer or url_for("patient_intake"))
 
+
 # [NEW] Load Whisper Model (Base model is ~150MB and runs fast on CPU)
 # We load it globally so we don't reload it on every request
+audio_model: Optional[Any] = None
 try:
     print("Loading Whisper model... this may take a moment.")
     audio_model = whisper.load_model("base")
@@ -78,41 +84,69 @@ TRANSLATIONS = {}
 # --- NER HIGHLIGHTING SETUP ---
 # Defines the entities we want to auto-highlight in the UI
 NER_MEDICATIONS = [
-    "Paracetamol", "Ibuprofen", "Aspirin", "Metformin", "Amoxicillin", 
-    "Lisinopril", "Atorvastatin", "Albuterol", "Tylenol", "Advil"
+    "Paracetamol",
+    "Ibuprofen",
+    "Aspirin",
+    "Metformin",
+    "Amoxicillin",
+    "Lisinopril",
+    "Atorvastatin",
+    "Albuterol",
+    "Tylenol",
+    "Advil",
 ]
 NER_CONDITIONS = [
-    "Viral Fever", "Migraine", "Diabetes", "Hypertension", "Asthma", 
-    "Pneumonia", "Bronchitis", "Covid-19", "Influenza", "Headache", 
-    "Fever", "Infection", "Nausea"
+    "Viral Fever",
+    "Migraine",
+    "Diabetes",
+    "Hypertension",
+    "Asthma",
+    "Pneumonia",
+    "Bronchitis",
+    "Covid-19",
+    "Influenza",
+    "Headache",
+    "Fever",
+    "Infection",
+    "Nausea",
 ]
 
-def highlight_entities(text):
+
+def highlight_entities(text: Optional[str]) -> str:
     """
     Scans text for medical entities and wraps them in colorful HTML badges.
+
     This acts as a lightweight NER (Named Entity Recognition) pipeline.
+
+    Args:
+        text: The input text to process for entity highlighting.
+
+    Returns:
+        The text with HTML span elements wrapping identified entities.
     """
-    if not text: return ""
-    
+    if not text:
+        return ""
+
     # 1. Highlight Dosages (e.g., 500 mg, 10ml) -> Gray Badge
     # Regex looks for numbers followed by units like mg, ml, g, kg
-    text = re.sub(r'(\d+\s?(mg|ml|g|kg|mcg))', r'<span class="entity-dosage">\1</span>', text, flags=re.IGNORECASE)
+    text = re.sub(r"(\d+\s?(mg|ml|g|kg|mcg))", r'<span class="entity-dosage">\1</span>', text, flags=re.IGNORECASE)
 
     # 2. Highlight Medications -> Red Badge
     for med in NER_MEDICATIONS:
         # \b ensures we match whole words only (e.g., avoid matching "corn" in "popcorn")
-        pattern = re.compile(r'\b(' + re.escape(med) + r')\b', re.IGNORECASE)
+        pattern = re.compile(r"\b(" + re.escape(med) + r")\b", re.IGNORECASE)
         text = pattern.sub(r'<span class="entity-med">\1</span>', text)
-        
+
     # 3. Highlight Conditions -> Blue Badge
     for cond in NER_CONDITIONS:
-        pattern = re.compile(r'\b(' + re.escape(cond) + r')\b', re.IGNORECASE)
+        pattern = re.compile(r"\b(" + re.escape(cond) + r")\b", re.IGNORECASE)
         text = pattern.sub(r'<span class="entity-condition">\1</span>', text)
-        
+
     return text
 
+
 # Register the filter so we can use it in HTML as {{ text | ner_highlight }}
-app.jinja_env.filters['ner_highlight'] = highlight_entities
+app.jinja_env.filters["ner_highlight"] = highlight_entities
 TRANSLATIONS_DIR = os.path.join(os.path.dirname(__file__), "translations")
 for lang_code in ["en", "hi"]:
     lang_file = os.path.join(TRANSLATIONS_DIR, f"{lang_code}.json")
@@ -128,26 +162,25 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-
 # --- ENCRYPTION SETUP ---
 # We retrieve the key from .env. If missing, we warn but don't crash immediately (unless used).
-FERNET_KEY = os.getenv("FERNET_KEY")
-cipher_suite = Fernet(FERNET_KEY) if FERNET_KEY else None
+FERNET_KEY: Optional[str] = os.getenv("FERNET_KEY")
+cipher_suite: Optional[Fernet] = Fernet(FERNET_KEY) if FERNET_KEY else None
 
-class EncryptedString(TypeDecorator):
-    """
-    Custom TypeDecorator that encrypts data before saving to DB 
-    and decrypts it when retrieving.
+
+class EncryptedString(TypeDecorator):  # type: ignore[type-arg]
+    """Custom TypeDecorator that encrypts data before saving to DB.
+
     Includes 'Safe Read' fallback for legacy unencrypted data.
     """
-    impl = Text  # Use Text to accommodate larger encrypted strings
 
-    def process_bind_param(self, value, dialect):
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value: Optional[str], dialect: Dialect) -> Optional[str]:
         """Encrypt before writing to DB."""
         if value is None:
             return None
@@ -161,7 +194,7 @@ class EncryptedString(TypeDecorator):
             logging.error(f"Encryption failed: {e}")
             return value
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(self, value: Optional[str], dialect: Dialect) -> Optional[str]:
         """Decrypt after reading from DB."""
         if value is None:
             return None
@@ -175,52 +208,58 @@ class EncryptedString(TypeDecorator):
             # This prevents crashes on existing unencrypted rows.
             return value
 
+
 # MODELS
-class User(db.Model):
+class User(db.Model):  # type: ignore[name-defined]
+    """User model for patients and doctors."""
+
+    __tablename__ = "user"
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False)
-    
+
     # [SECURE] Applied Encryption to PII
-    full_name = db.Column(EncryptedString) 
-    
+    full_name = db.Column(EncryptedString)
+
     specialty = db.Column(db.String(100), nullable=True)
     doctor_unique_id = db.Column(db.String(50), nullable=True)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
+        """Convert user to dictionary representation."""
         return {
             "id": self.id,
             "username": self.username,
             "role": self.role,
-            "full_name": self.full_name, # Auto-decrypted on access
+            "full_name": self.full_name,
             "password_hash": self.password_hash,
             "specialty": self.specialty,
         }
 
 
-class Case(db.Model):
+class Case(db.Model):  # type: ignore[name-defined]
+    """Case model for patient cases."""
+
+    __tablename__ = "case"
+
     id = db.Column(db.String(50), primary_key=True)
     patient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Note: 'raw_data' is JSON. We are not encrypting the whole JSON column 
-    # as it would break JSON querying capabilities. 
-    # PII inside here should be minimized in future updates.
+
+    # Note: 'raw_data' is JSON. We are not encrypting the whole JSON column
+    # as it would break JSON querying capabilities.
     raw_data = db.Column(db.JSON)
-    
+
     ai_analysis = db.Column(db.JSON)
     status = db.Column(db.String(50), default="Pending Review")
 
-    patient = db.relationship(
-        "User", foreign_keys=[patient_id], backref="cases_as_patient"
-    )
-    doctor = db.relationship(
-        "User", foreign_keys=[doctor_id], backref="cases_as_doctor"
-    )
+    patient = db.relationship("User", foreign_keys=[patient_id], backref="cases_as_patient")
+    doctor = db.relationship("User", foreign_keys=[doctor_id], backref="cases_as_doctor")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
+        """Convert case to dictionary representation."""
         return {
             "id": self.id,
             "case_id": self.id,
@@ -233,18 +272,26 @@ class Case(db.Model):
         }
 
 
-class ClinicalLog(db.Model):
+class ClinicalLog(db.Model):  # type: ignore[name-defined]
+    """Model for logging clinical AI interactions."""
+
+    __tablename__ = "clinical_log"
+
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     case_id = db.Column(db.String(50), db.ForeignKey("case.id"))
     model = db.Column(db.String(50))
     latency_ms = db.Column(db.Float)
-    
+
     # [SECURE] Encrypting symptoms snippet as it contains sensitive health info
     symptoms_snippet = db.Column(EncryptedString)
 
 
-class AuditLog(db.Model):
+class AuditLog(db.Model):  # type: ignore[name-defined]
+    """Model for audit logging user actions."""
+
+    __tablename__ = "audit_log"
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     action = db.Column(db.String(100), nullable=False)
@@ -260,27 +307,57 @@ with app.app_context():
 
 # HELPER FUNCTIONS (Refactored to use DB)
 
-def get_user_by_username(username):
-    # Note: Cannot search efficiently on Encrypted columns using standard SQL
-    # This filter relies on 'username' which is NOT encrypted (safe for lookup)
+
+def get_user_by_username(username: Optional[str]) -> Optional[dict[str, Any]]:
+    """Retrieve a user by their username.
+
+    Args:
+        username: The username to search for.
+
+    Returns:
+        User dictionary if found, None otherwise.
+    """
+    if username is None:
+        return None
     user = User.query.filter_by(username=username).first()
     return user.to_dict() if user else None
 
 
-def get_user_by_id(user_id):
+def get_user_by_id(user_id: Any) -> Optional[dict[str, Any]]:
+    """Retrieve a user by their ID.
+
+    Args:
+        user_id: The user ID to search for.
+
+    Returns:
+        User dictionary if found, None otherwise.
+    """
     try:
         user = User.query.get(int(user_id))
         return user.to_dict() if user else None
-    except:
+    except (ValueError, TypeError):
         return None
 
 
-def get_all_doctors():
+def get_all_doctors() -> list[dict[str, Any]]:
+    """Retrieve all users with the doctor role.
+
+    Returns:
+        List of doctor dictionaries.
+    """
     doctors = User.query.filter_by(role="doctor").all()
     return [d.to_dict() for d in doctors]
 
 
-def add_case(case_data):
+def add_case(case_data: dict[str, Any]) -> None:
+    """Add a new case to the database.
+
+    Args:
+        case_data: Dictionary containing case information.
+
+    Raises:
+        Exception: If there's an error adding the case.
+    """
     try:
         new_case = Case(
             id=case_data["id"],
@@ -303,26 +380,42 @@ def add_case(case_data):
         raise e
 
 
-def get_cases_for_doctor(doctor_id):
-    cases = (
-        Case.query.filter_by(doctor_id=int(doctor_id))
-        .order_by(Case.timestamp.desc())
-        .all()
-    )
+def get_cases_for_doctor(doctor_id: Any) -> list[dict[str, Any]]:
+    """Retrieve all cases assigned to a specific doctor.
+
+    Args:
+        doctor_id: The doctor's user ID.
+
+    Returns:
+        List of case dictionaries.
+    """
+    cases = Case.query.filter_by(doctor_id=int(doctor_id)).order_by(Case.timestamp.desc()).all()
     return [c.to_dict() for c in cases]
 
 
-def get_case_by_id(case_id):
+def get_case_by_id(case_id: str) -> Optional[dict[str, Any]]:
+    """Retrieve a case by its ID.
+
+    Args:
+        case_id: The case ID to search for.
+
+    Returns:
+        Case dictionary if found, None otherwise.
+    """
     case = Case.query.get(case_id)
     return case.to_dict() if case else None
 
 
-def get_cases_for_patient(patient_id):
-    cases = (
-        Case.query.filter_by(patient_id=int(patient_id))
-        .order_by(Case.timestamp.desc())
-        .all()
-    )
+def get_cases_for_patient(patient_id: Any) -> list[dict[str, Any]]:
+    """Retrieve all cases for a specific patient.
+
+    Args:
+        patient_id: The patient's user ID.
+
+    Returns:
+        List of case dictionaries.
+    """
+    cases = Case.query.filter_by(patient_id=int(patient_id)).order_by(Case.timestamp.desc()).all()
     return [c.to_dict() for c in cases]
 
 
@@ -331,7 +424,7 @@ SYSTEM_PROMPT = """
 ACT AS: Senior Clinical Consultant & Medical Scribe.
 TASK: Analyze patient intake data and generate a structured clinical case file.
 
-LANGUAGE INSTRUCTION: 
+LANGUAGE INSTRUCTION:
 - "patient_view" MUST be in {language}.
 - "doctor_view" MUST be in ENGLISH.
 
@@ -371,37 +464,51 @@ OUTPUT FORMAT: Return ONLY valid JSON. Do not include markdown formatting like `
 # DECORATORS
 
 
-def login_required(f):
+def login_required(f: F) -> F:
+    """Decorator to require user authentication."""
+
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if "user_id" not in session:
             return redirect(url_for("landing"))
         return f(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, decorated_function)
 
 
-def patient_required(f):
+def patient_required(f: F) -> F:
+    """Decorator to require patient role."""
+
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if session.get("role") != "patient":
             return redirect(url_for("landing"))
         return f(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, decorated_function)
 
 
-def doctor_required(f):
+def doctor_required(f: F) -> F:
+    """Decorator to require doctor role."""
+
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if session.get("role") != "doctor":
             return redirect(url_for("landing"))
         return f(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, decorated_function)
 
 
-def clean_medical_text(text):
+def clean_medical_text(text: Optional[str]) -> str:
+    """Clean and format medical text by removing markers and adding formatting.
+
+    Args:
+        text: The raw medical text to clean.
+
+    Returns:
+        Cleaned and formatted text.
+    """
     if not text:
         return ""
     text = re.sub(r"\[\*\*", "", text)
@@ -409,43 +516,78 @@ def clean_medical_text(text):
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     return text.strip()
 
+
 # --- ICD-10 CODING LOGIC ---
-ICD10_COMMON_CODES = {
-    "fever": "R50.9", "viral fever": "B34.9", "typhoid": "A01.0",
-    "cough": "R05", "dry cough": "R05.3",
-    "headache": "R51", "migraine": "G43.9",
-    "common cold": "J00", "flu": "J11.1", "influenza": "J11.1",
-    "pneumonia": "J18.9", "bronchitis": "J40",
-    "asthma": "J45.909", "hypertension": "I10", "high blood pressure": "I10",
-    "diabetes": "E11.9", "abdominal pain": "R10.9",
-    "chest pain": "R07.9", "nausea": "R11.0", "vomiting": "R11.1",
-    "diarrhea": "R19.7", "fatigue": "R53.83", "anxiety": "F41.9",
-    "depression": "F32.9", "infection": "B99.9"
+ICD10_COMMON_CODES: dict[str, str] = {
+    "fever": "R50.9",
+    "viral fever": "B34.9",
+    "typhoid": "A01.0",
+    "cough": "R05",
+    "dry cough": "R05.3",
+    "headache": "R51",
+    "migraine": "G43.9",
+    "common cold": "J00",
+    "flu": "J11.1",
+    "influenza": "J11.1",
+    "pneumonia": "J18.9",
+    "bronchitis": "J40",
+    "asthma": "J45.909",
+    "hypertension": "I10",
+    "high blood pressure": "I10",
+    "diabetes": "E11.9",
+    "abdominal pain": "R10.9",
+    "chest pain": "R07.9",
+    "nausea": "R11.0",
+    "vomiting": "R11.1",
+    "diarrhea": "R19.7",
+    "fatigue": "R53.83",
+    "anxiety": "F41.9",
+    "depression": "F32.9",
+    "infection": "B99.9",
 }
 
-def get_icd_code(diagnosis):
-    """Matches a diagnosis text to an ICD-10 code."""
+
+def get_icd_code(diagnosis: Optional[str]) -> str:
+    """Match a diagnosis text to an ICD-10 code.
+
+    Args:
+        diagnosis: The diagnosis text to look up.
+
+    Returns:
+        The matching ICD-10 code or 'Not Found'/'Unspecified'.
+    """
     if not diagnosis:
         return "Not Found"
-    
+
     text = diagnosis.lower()
-    
+
     # 1. Direct key search (fastest)
     for key, code in ICD10_COMMON_CODES.items():
         if key in text:
             return code
-            
+
     # 2. Keyword Fallback
-    if "pain" in text: return "R52" 
-    if "viral" in text: return "B34.9"
-    if "bacterial" in text: return "A49.9"
-    
+    if "pain" in text:
+        return "R52"
+    if "viral" in text:
+        return "B34.9"
+    if "bacterial" in text:
+        return "A49.9"
+
     return "Unspecified"
 
-def is_test_case(raw_data):
-    """Return True if the intake matches the predefined test fixture."""
 
-    def val(key):
+def is_test_case(raw_data: dict[str, Any]) -> bool:
+    """Return True if the intake matches the predefined test fixture.
+
+    Args:
+        raw_data: The raw intake data to check.
+
+    Returns:
+        True if this is a test case, False otherwise.
+    """
+
+    def val(key: str) -> str:
         v = raw_data.get(key)
         if v is None:
             return ""
@@ -465,33 +607,56 @@ def is_test_case(raw_data):
     return all(checks)
 
 
-def get_language():
+def get_language() -> str:
     """Get current language from session or default to English."""
-    return session.get("language", "en")
+    lang: str = str(session.get("language", "en"))
+    return lang
 
 
-def get_translations(lang_code=None):
-    """Get translations for the current or specified language."""
+def get_translations(lang_code: Optional[str] = None) -> dict[str, Any]:
+    """Get translations for the current or specified language.
+
+    Args:
+        lang_code: Optional language code. If None, uses current session language.
+
+    Returns:
+        Dictionary of translations for the specified language.
+    """
     if lang_code is None:
         lang_code = get_language()
-    return TRANSLATIONS.get(lang_code, TRANSLATIONS.get("en", {}))
+    translations: dict[str, Any] = TRANSLATIONS.get(lang_code, TRANSLATIONS.get("en", {}))
+    return translations
 
 
 @app.route("/set_language/<lang_code>")
-def set_language(lang_code):
-    """Set the user's language preference."""
+def set_language(lang_code: str) -> WerkzeugResponse:
+    """Set the user's language preference.
+
+    Args:
+        lang_code: The language code to set.
+
+    Returns:
+        Redirect response to the previous page.
+    """
     if lang_code in TRANSLATIONS:
         session["language"] = lang_code
     return redirect(request.referrer or url_for("landing"))
 
 
-def build_predefined_ai_analysis(language, raw_data):
-    """Construct a deterministic AI analysis payload matching the app schema."""
+def build_predefined_ai_analysis(language: str, raw_data: dict[str, Any]) -> dict[str, Any]:
+    """Construct a deterministic AI analysis payload matching the app schema.
+
+    Args:
+        language: The language for the patient view ('English' or 'Hindi').
+        raw_data: The raw patient intake data.
+
+    Returns:
+        Complete AI analysis dictionary with patient and doctor views.
+    """
     # Minimal bilingual content for patient_view and English doctor_view
     patient_summary = {
         "English": (
-            "Your symptoms and vitals suggest a mild viral fever. "
-            "Rest, hydration, and monitoring are recommended."
+            "Your symptoms and vitals suggest a mild viral fever. " "Rest, hydration, and monitoring are recommended."
         ),
         "Hindi": (
             "आपके लक्षण और वाइटल्स हल्का वायरल बुखार दर्शाते हैं। "
@@ -536,15 +701,12 @@ def build_predefined_ai_analysis(language, raw_data):
                 "no current medications, denies additional symptoms."
             ),
             "objective": (
-                "Vitals: BP 120/80, Wt 76 kg, Ht 184.9 cm. Afebrile to low-grade fever; "
-                "no acute distress reported."
+                "Vitals: BP 120/80, Wt 76 kg, Ht 184.9 cm. Afebrile to low-grade fever; " "no acute distress reported."
             ),
             "assessment": (
                 "Likely mild viral illness. DDx: viral URI, early influenza; less likely bacterial infection."
             ),
-            "plan": (
-                "Supportive care, PRN antipyretics, hydration, return precautions for red flags."
-            ),
+            "plan": ("Supportive care, PRN antipyretics, hydration, return precautions for red flags."),
             "subjective_list": [
                 "Fever 38°C",
                 "No allergies or current meds",
@@ -566,7 +728,14 @@ def build_predefined_ai_analysis(language, raw_data):
     }
 
 
-def log_interaction(case_id, inputs, latency):
+def log_interaction(case_id: str, inputs: dict[str, Any], latency: float) -> None:
+    """Log an AI interaction to the clinical log.
+
+    Args:
+        case_id: The case ID associated with this interaction.
+        inputs: The input data including symptoms.
+        latency: The time taken for the AI processing in seconds.
+    """
     try:
         log_entry = {
             "timestamp": datetime.now(),
@@ -586,14 +755,27 @@ def log_interaction(case_id, inputs, latency):
         logging.error(f"Logging Error: {e}")
 
 
-def log_audit_action(action, case_id=None, user_id=None):
-    """Log an audit action to the database."""
+def log_audit_action(
+    action: str,
+    case_id: Optional[str] = None,
+    user_id: Optional[Any] = None,
+) -> Optional[bool]:
+    """Log an audit action to the database.
+
+    Args:
+        action: The action being logged.
+        case_id: Optional case ID associated with the action.
+        user_id: Optional user ID. If None, uses session user.
+
+    Returns:
+        True on success, False on error, None if no user.
+    """
     try:
         if user_id is None:
             user_id = session.get("user_id")
-            
+
         if not user_id:
-            return
+            return None
 
         new_log = AuditLog(
             user_id=int(user_id),
@@ -605,57 +787,75 @@ def log_audit_action(action, case_id=None, user_id=None):
         db.session.commit()
 
         if user_id == session.get("user_id"):
-            username = (
-                session.get("account_name") or session.get("name") or f"User {user_id}"
-            )
+            username = session.get("account_name") or session.get("name") or f"User {user_id}"
         else:
             user = get_user_by_id(user_id)
             username = user["full_name"] if user else f"User {user_id}"
-            
-        logging.info(
-            f"AUDIT LOG: User: {username} | Action: {action} | Case: {case_id} | Time: {new_log.timestamp}"
-        )
+
+        logging.info(f"AUDIT LOG: User: {username} | Action: {action} | Case: {case_id} | Time: {new_log.timestamp}")
         return True
     except Exception as e:
         db.session.rollback()
         logging.error(f"Error logging audit action: {e}")
         return False
 
-class PDFReport(FPDF):
-    def header(self):
+
+class PDFReport(FPDF):  # type: ignore[misc]
+    """Custom PDF report class for generating clinical SOAP notes."""
+
+    def header(self) -> None:
+        """Generate the PDF header with title and watermark."""
         # Hospital Title
-        self.set_font('Arial', 'B', 16)
-        self.cell(0, 10, 'MediAssist - Clinical SOAP Note', 0, 1, 'C')
+        self.set_font("Arial", "B", 16)
+        self.cell(0, 10, "MediAssist - Clinical SOAP Note", 0, 1, "C")
         self.ln(5)
-        
-        # Watermark
-        self.set_font('Arial', 'B', 50)
+
+        # Watermark (with rotation if supported)
+        self.set_font("Arial", "B", 50)
         self.set_text_color(220, 220, 220)  # Light gray
-        with self.rotation(45, 100, 150):
-            self.text(30, 190, "CONFIDENTIAL")
+        try:
+            with self.rotation(45, 100, 150):
+                self.text(30, 190, "CONFIDENTIAL")
+        except AttributeError:
+            # Fallback for fpdf versions without rotation support
+            self.text(60, 150, "CONFIDENTIAL")
         self.set_text_color(0, 0, 0)  # Reset to black
 
-    def footer(self):
+    def footer(self) -> None:
+        """Generate the PDF footer with page number."""
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Page {self.page_no()} - Generated by MediAssist AI Scribe', 0, 0, 'C')
+        self.set_font("Arial", "I", 8)
+        self.cell(0, 10, f"Page {self.page_no()} - Generated by MediAssist AI Scribe", 0, 0, "C")
 
-    def chapter_title(self, label):
-        self.set_font('Arial', 'B', 12)
+    def chapter_title(self, label: str) -> None:
+        """Add a chapter title to the PDF.
+
+        Args:
+            label: The title text for the chapter.
+        """
+        self.set_font("Arial", "B", 12)
         self.set_fill_color(200, 220, 255)  # Light blue background
-        self.cell(0, 10, f"{label}", 0, 1, 'L', 1)
+        self.cell(0, 10, f"{label}", 0, 1, "L", 1)
         self.ln(2)
 
-    def chapter_body(self, text):
-        self.set_font('Arial', '', 11)
+    def chapter_body(self, text: str) -> None:
+        """Add body text to the PDF.
+
+        Args:
+            text: The body text content.
+        """
+        self.set_font("Arial", "", 11)
         self.multi_cell(0, 7, text)
         self.ln(5)
 
+
 # ROUTES
 
+
 @app.before_request
-def make_session_permanent():
-    """
+def make_session_permanent() -> None:
+    """Set session as permanent on every request.
+
     Sliding Window: Resets the session expiration on every request.
     If the user is active, they won't be logged out.
     If they are idle for 15 mins, the session dies.
@@ -663,8 +863,9 @@ def make_session_permanent():
     session.permanent = True
     app.permanent_session_lifetime = timedelta(minutes=15)
 
+
 @app.route("/")
-def landing():
+def landing() -> str | WerkzeugResponse:
     """Landing page - role selection."""
     if "user_id" in session:
         if session["role"] == "patient":
@@ -679,6 +880,7 @@ def landing():
 
 # PATIENT ROUTES
 
+
 @app.route("/patient/login", methods=["GET", "POST"])
 def patient_login():
     lang_code = get_language()
@@ -690,11 +892,7 @@ def patient_login():
 
         user = get_user_by_username(username)
 
-        if (
-            user
-            and user["role"] == "patient"
-            and check_password_hash(user["password_hash"], password)
-        ):
+        if user and user["role"] == "patient" and check_password_hash(user["password_hash"], password):
             session["user_id"] = user["id"]
             session["role"] = "patient"
             session["account_name"] = user["full_name"]
@@ -712,13 +910,8 @@ def patient_intake():
     translations = get_translations(lang_code)
 
     doctors = get_all_doctors()
-    doctor_list = [
-        {"id": d["id"], "name": d["full_name"], "specialty": d["specialty"]}
-        for d in doctors
-    ]
-    return render_template(
-        "intake.html", doctors=doctor_list, t=translations, lang=lang_code
-    )
+    doctor_list = [{"id": d["id"], "name": d["full_name"], "specialty": d["specialty"]} for d in doctors]
+    return render_template("intake.html", doctors=doctor_list, t=translations, lang=lang_code)
 
 
 # [NEW] Voice Transcription Endpoint
@@ -728,7 +921,7 @@ def patient_intake():
 def transcribe_audio():
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
-    
+
     if not audio_model:
         return jsonify({"error": "Transcriber model not loaded on server."}), 503
 
@@ -742,22 +935,22 @@ def transcribe_audio():
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_audio:
             temp_path = temp_audio.name
             audio_file.save(temp_path)
-        
+
         # Transcribe
-        # You can add language='en' or 'hi' if you want to force it, 
+        # You can add language='en' or 'hi' if you want to force it,
         # or let Whisper detect it.
         result = audio_model.transcribe(temp_path)
         transcribed_text = result["text"].strip()
-        
+
         # Clean up temp file
         os.remove(temp_path)
-        
+
         return jsonify({"text": transcribed_text})
-        
+
     except Exception as e:
         logging.error(f"Transcription error: {e}")
         # Try to clean up if we failed
-        if 'temp_path' in locals() and os.path.exists(temp_path):
+        if "temp_path" in locals() and os.path.exists(temp_path):
             os.remove(temp_path)
         return jsonify({"error": str(e)}), 500
 
@@ -773,7 +966,7 @@ def patient_submit():
         if not symptoms or len(symptoms) < 10:
             flash("Please provide more detail in symptoms (at least 10 characters).", "danger")
             return redirect(url_for("patient_intake"))
-        
+
         if len(symptoms) > 1000:
             flash("Symptoms description is too long (max 1000 characters).", "danger")
             return redirect(url_for("patient_intake"))
@@ -817,9 +1010,7 @@ def patient_submit():
         log_audit_action("case_creation", case_id)
 
         formatted_prompt = SYSTEM_PROMPT.format(language=selected_language)
-        prompt = (
-            f"{formatted_prompt}\nPATIENT DATA: {json.dumps(raw_data, default=str)}"
-        )
+        prompt = f"{formatted_prompt}\nPATIENT DATA: {json.dumps(raw_data, default=str)}"
 
         ai_analysis = None
         try:
@@ -843,20 +1034,18 @@ def patient_submit():
             # [FIX] FORCE FALLBACK: Always load fake analysis if AI is down
             logging.warning("Ollama unreachable; using fallback analysis.")
             ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
-            
+
             # CRITICAL: Overwrite the diagnosis with what you typed so your ICD-10 code works!
             user_symptom = request.form.get("symptoms") or "Viral Fever"
             ai_analysis["patient_view"]["primary_diagnosis"] = user_symptom
-            
+
             flash("AI offline. Using simulation mode to save case.", "warning")
             # We removed the restriction. Now ANY user can proceed without AI.
         except Exception as e:
             logging.error(f"Llama 3 Generation or Parsing Failed: {e}")
             if is_test_case(raw_data):
                 ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
-                flash(
-                    "AI processing error. Loaded predefined test analysis.", "warning"
-                )
+                flash("AI processing error. Loaded predefined test analysis.", "warning")
             else:
                 flash("AI processing failed. Please try again.", "danger")
                 return redirect(url_for("patient_intake"))
@@ -903,9 +1092,7 @@ def patient_result(case_id):
         flash("Access Denied", "danger")
         return redirect(url_for("patient_intake"))
 
-    return render_template(
-        "patient_result.html", case=case, t=translations, lang=lang_code
-    )
+    return render_template("patient_result.html", case=case, t=translations, lang=lang_code)
 
 
 @app.route("/patient/logout")
@@ -926,11 +1113,7 @@ def doctor_login():
 
         user = get_user_by_username(username)
 
-        if (
-            user
-            and user["role"] == "doctor"
-            and check_password_hash(user["password_hash"], password)
-        ):
+        if user and user["role"] == "doctor" and check_password_hash(user["password_hash"], password):
             session["user_id"] = user["id"]
             session["role"] = "doctor"
             session["name"] = user["full_name"]
@@ -948,22 +1131,38 @@ def doctor_dashboard():
     translations = get_translations(lang_code)
 
     doctor_id = session.get("user_id")
-    
-    search_query = request.args.get('search', '')
-    urgency_filter = request.args.get('urgency', '')
-    language_filter = request.args.get('language', '')
-    
+
+    search_query = request.args.get("search", "")
+    urgency_filter = request.args.get("urgency", "")
+    language_filter = request.args.get("language", "")
+
     cases_list = get_cases_for_doctor(doctor_id)
-    
+
     if search_query:
         search_query = search_query.lower()
-        cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
-        
+        cases_list = [
+            c
+            for c in cases_list
+            if search_query in c["raw_data"].get("name", "").lower() or search_query in c["id"].lower()
+        ]
+
     if urgency_filter:
-        cases_list = [c for c in cases_list if c.get('ai_analysis') and c.get('ai_analysis').get('doctor_view', {}).get('urgency_level') == urgency_filter]
-        
+        filtered_cases = []
+        for c in cases_list:
+            ai_analysis = c.get("ai_analysis")
+            if ai_analysis is not None:
+                doctor_view = ai_analysis.get("doctor_view", {})
+                if doctor_view.get("urgency_level") == urgency_filter:
+                    filtered_cases.append(c)
+        cases_list = filtered_cases
+
     if language_filter:
-        cases_list = [c for c in cases_list if c.get('raw_data') and c.get('raw_data').get('language') == language_filter]
+        filtered_cases = []
+        for c in cases_list:
+            raw_data = c.get("raw_data")
+            if raw_data is not None and raw_data.get("language") == language_filter:
+                filtered_cases.append(c)
+        cases_list = filtered_cases
 
     doctor_info = get_user_by_id(doctor_id)
     return render_template(
@@ -972,7 +1171,7 @@ def doctor_dashboard():
         doctor=doctor_info,
         t=translations,
         lang=lang_code,
-        filters={'search': search_query, 'urgency': urgency_filter, 'language': language_filter}
+        filters={"search": search_query, "urgency": urgency_filter, "language": language_filter},
     )
 
 
@@ -990,9 +1189,7 @@ def doctor_view(case_id):
         flash("Case not found or access denied.", "danger")
         return redirect(url_for("doctor_dashboard"))
 
-    return render_template(
-        "doctor_view.html", case=case, t=translations, lang=lang_code
-    )
+    return render_template("doctor_view.html", case=case, t=translations, lang=lang_code)
 
 
 @app.route("/doctor/edit/<case_id>", methods=["GET", "POST"])
@@ -1014,15 +1211,9 @@ def doctor_edit(case_id):
             case_obj = Case.query.get(case_id)
             new_analysis = dict(case_obj.ai_analysis)
 
-            new_analysis["doctor_view"]["subjective_list"] = request.form.getlist(
-                "subjective[]"
-            )
-            new_analysis["doctor_view"]["objective_list"] = request.form.getlist(
-                "objective[]"
-            )
-            new_analysis["doctor_view"]["assessment_list"] = request.form.getlist(
-                "assessment[]"
-            )
+            new_analysis["doctor_view"]["subjective_list"] = request.form.getlist("subjective[]")
+            new_analysis["doctor_view"]["objective_list"] = request.form.getlist("objective[]")
+            new_analysis["doctor_view"]["assessment_list"] = request.form.getlist("assessment[]")
             new_analysis["doctor_view"]["plan_list"] = request.form.getlist("plan[]")
 
             from sqlalchemy.orm.attributes import flag_modified
@@ -1040,9 +1231,7 @@ def doctor_edit(case_id):
             logging.error(f"Error updating case: {e}")
             flash(f"Error updating case: {str(e)}", "danger")
 
-    return render_template(
-        "doctor_edit.html", case=case, t=translations, lang=lang_code
-    )
+    return render_template("doctor_edit.html", case=case, t=translations, lang=lang_code)
 
 
 @app.route("/admin/logs")
@@ -1053,9 +1242,7 @@ def admin_logs():
     translations = get_translations(lang_code)
 
     logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).all()
-    return render_template(
-        "admin_logs.html", logs=logs, t=translations, lang=lang_code
-    )
+    return render_template("admin_logs.html", logs=logs, t=translations, lang=lang_code)
 
 
 @app.route("/doctor/logout")
@@ -1074,11 +1261,11 @@ def view_cases():
 
     user_id = session.get("user_id")
     role = session.get("role")
-    
-    search_query = request.args.get('search', '')
-    urgency_filter = request.args.get('urgency', '')
-    language_filter = request.args.get('language', '')
-    doctor_filter = request.args.get('doctor', '')
+
+    search_query = request.args.get("search", "")
+    urgency_filter = request.args.get("urgency", "")
+    language_filter = request.args.get("language", "")
+    doctor_filter = request.args.get("doctor", "")
 
     if role == "doctor":
         cases_list = get_cases_for_doctor(user_id)
@@ -1090,26 +1277,55 @@ def view_cases():
 
     if search_query:
         search_query = search_query.lower()
-        cases_list = [c for c in cases_list if search_query in c['raw_data'].get('name', '').lower() or search_query in c['id'].lower()]
-        
+        cases_list = [
+            c
+            for c in cases_list
+            if search_query in c["raw_data"].get("name", "").lower() or search_query in c["id"].lower()
+        ]
+
     if urgency_filter:
-        cases_list = [c for c in cases_list if c.get('ai_analysis') and c.get('ai_analysis').get('doctor_view', {}).get('urgency_level') == urgency_filter]
-        
+        filtered_cases = []
+        for c in cases_list:
+            ai_analysis = c.get("ai_analysis")
+            if ai_analysis is not None:
+                doctor_view = ai_analysis.get("doctor_view", {})
+                if doctor_view.get("urgency_level") == urgency_filter:
+                    filtered_cases.append(c)
+        cases_list = filtered_cases
+
     if language_filter:
-        cases_list = [c for c in cases_list if c.get('raw_data') and c.get('raw_data').get('language') == language_filter]
-        
+        filtered_cases = []
+        for c in cases_list:
+            raw_data = c.get("raw_data")
+            if raw_data is not None and raw_data.get("language") == language_filter:
+                filtered_cases.append(c)
+        cases_list = filtered_cases
+
     if doctor_filter:
         doctor_filter = doctor_filter.lower()
-        cases_list = [c for c in cases_list if c.get('raw_data') and doctor_filter in c.get('raw_data').get('doctor_name', '').lower()]
+        filtered_cases = []
+        for c in cases_list:
+            raw_data = c.get("raw_data")
+            if raw_data is not None:
+                doctor_name = raw_data.get("doctor_name", "")
+                if doctor_filter in doctor_name.lower():
+                    filtered_cases.append(c)
+        cases_list = filtered_cases
 
     return render_template(
-        "cases.html", 
-        cases=cases_list, 
-        role=role, 
-        t=translations, 
+        "cases.html",
+        cases=cases_list,
+        role=role,
+        t=translations,
         lang=lang_code,
-        filters={'search': search_query, 'urgency': urgency_filter, 'language': language_filter, 'doctor': doctor_filter}
+        filters={
+            "search": search_query,
+            "urgency": urgency_filter,
+            "language": language_filter,
+            "doctor": doctor_filter,
+        },
     )
+
 
 @app.route("/doctor/download/<case_id>")
 @login_required
@@ -1127,9 +1343,9 @@ def download_pdf(case_id):
     # Create PDF
     pdf = PDFReport()
     pdf.add_page()
-    
+
     # 1. Patient Metadata
-    pdf.set_font('Arial', '', 11)
+    pdf.set_font("Arial", "", 11)
     pdf.cell(100, 7, f"Patient Name: {raw.get('name', 'Unknown')}", 0, 0)
     pdf.cell(0, 7, f"Date: {case.get('timestamp', '')[:10]}", 0, 1)
     pdf.cell(100, 7, f"Age/Gender: {raw.get('age')} / {raw.get('gender')}", 0, 0)
@@ -1173,6 +1389,7 @@ def download_pdf(case_id):
     log_audit_action("export_pdf", case_id)
 
     return send_file(save_path, as_attachment=True)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
