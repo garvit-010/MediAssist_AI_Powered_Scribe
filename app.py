@@ -288,17 +288,39 @@ class ClinicalLog(db.Model):  # type: ignore[name-defined]
 
 
 class AuditLog(db.Model):  # type: ignore[name-defined]
-    """Model for audit logging user actions."""
+    """Model for audit logging user actions and PII access."""
 
     __tablename__ = "audit_log"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     action = db.Column(db.String(100), nullable=False)
-    case_id = db.Column(db.String(50), nullable=True)
+    resource_type = db.Column(db.String(50))  # e.g., 'case', 'user'
+    resource_id = db.Column(db.String(50))
+    pii_accessed = db.Column(db.Boolean, default=False)
+    ip_address = db.Column(db.String(45))
+    user_agent = db.Column(db.String(255))
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User", backref="audit_logs")
+
+
+class AILog(db.Model):  # type: ignore[name-defined]
+    """Model for tracking AI performance, costs, and fallbacks (MLOps)."""
+
+    __tablename__ = "ai_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.String(50), db.ForeignKey("case.id"), nullable=True)
+    model = db.Column(db.String(50))
+    latency_ms = db.Column(db.Float)
+    prompt_tokens = db.Column(db.Integer, default=0)
+    completion_tokens = db.Column(db.Integer, default=0)
+    total_tokens = db.Column(db.Integer, default=0)
+    cost = db.Column(db.Float, default=0.0)
+    status = db.Column(db.String(20))  # 'success', 'failure', 'fallback'
+    fallback_reason = db.Column(db.Text, nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 # Initialize DB (Creates tables if not exist)
@@ -728,76 +750,100 @@ def build_predefined_ai_analysis(language: str, raw_data: dict[str, Any]) -> dic
     }
 
 
-def log_interaction(case_id: str, inputs: dict[str, Any], latency: float) -> None:
-    """Log an AI interaction to the clinical log.
-
-    Args:
-        case_id: The case ID associated with this interaction.
-        inputs: The input data including symptoms.
-        latency: The time taken for the AI processing in seconds.
-    """
+def log_ai_interaction(
+    case_id: Optional[str],
+    model: str,
+    latency_ms: float,
+    status: str = "success",
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    fallback_reason: Optional[str] = None,
+) -> None:
+    """Log an AI interaction for MLOps monitoring."""
     try:
-        log_entry = {
-            "timestamp": datetime.now(),
-            "case_id": case_id,
-            "model": "llama3",
-            "latency_ms": round(latency * 1000, 2),
-            "symptoms_snippet": inputs.get("symptoms", "")[:50],
-        }
-        logging.info(f"MLOPS LOG: {log_entry}")
+        total_tokens = prompt_tokens + completion_tokens
+        # Estimated cost: $0.0002 per 1k tokens (llama3 local estimation)
+        cost = (total_tokens / 1000) * 0.0002
 
-        # Log to DB
-        log = ClinicalLog(**log_entry)
-        db.session.add(log)
+        ai_log = AILog(
+            case_id=case_id,
+            model=model,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost=cost,
+            status=status,
+            fallback_reason=fallback_reason,
+            timestamp=datetime.utcnow(),
+        )
+        db.session.add(ai_log)
         db.session.commit()
-
     except Exception as e:
-        logging.error(f"Logging Error: {e}")
+        logging.error(f"AI Interaction Logging Error: {e}")
 
 
 def log_audit_action(
     action: str,
-    case_id: Optional[str] = None,
+    resource_type: Optional[str] = None,
+    resource_id: Optional[str] = None,
     user_id: Optional[Any] = None,
+    pii_accessed: bool = False,
 ) -> Optional[bool]:
-    """Log an audit action to the database.
+    """Log an audit action to the database with HIPAA-lite tracking.
 
     Args:
         action: The action being logged.
-        case_id: Optional case ID associated with the action.
+        resource_type: Optional type of resource (e.g., 'case').
+        resource_id: Optional ID of the resource.
         user_id: Optional user ID. If None, uses session user.
+        pii_accessed: Whether PII was accessed in this action.
 
     Returns:
-        True on success, False on error, None if no user.
+        True on success, False on error.
     """
     try:
         if user_id is None:
             user_id = session.get("user_id")
 
-        if not user_id:
-            return None
-
         new_log = AuditLog(
-            user_id=int(user_id),
+            user_id=int(user_id) if user_id else None,
             action=action,
-            case_id=case_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            pii_accessed=pii_accessed,
+            ip_address=request.remote_addr if request else None,
+            user_agent=request.user_agent.string if request else None,
             timestamp=datetime.utcnow(),
         )
         db.session.add(new_log)
         db.session.commit()
-
-        if user_id == session.get("user_id"):
-            username = session.get("account_name") or session.get("name") or f"User {user_id}"
-        else:
-            user = get_user_by_id(user_id)
-            username = user["full_name"] if user else f"User {user_id}"
-
-        logging.info(f"AUDIT LOG: User: {username} | Action: {action} | Case: {case_id} | Time: {new_log.timestamp}")
         return True
     except Exception as e:
-        db.session.rollback()
-        logging.error(f"Error logging audit action: {e}")
+        logging.error(f"Audit Logging Error: {e}")
         return False
+
+
+def audit_access(resource_type: str, pii: bool = False) -> Callable[[F], F]:
+    """Decorator to automatically log resource access for auditing."""
+
+    def decorator(f: F) -> F:
+        @wraps(f)
+        def decorated_function(*args: Any, **kwargs: Any) -> Any:
+            # Extract resource_id from kwargs if present (e.g., case_id)
+            resource_id = kwargs.get("case_id") or kwargs.get("id")
+
+            log_audit_action(
+                action=f"access_{f.__name__}",
+                resource_type=resource_type,
+                resource_id=str(resource_id) if resource_id else None,
+                pii_accessed=pii,
+            )
+            return f(*args, **kwargs)
+
+        return cast(F, decorated_function)
+
+    return decorator
 
 
 class PDFReport(FPDF):  # type: ignore[misc]
@@ -896,8 +942,10 @@ def patient_login():
             session["user_id"] = user["id"]
             session["role"] = "patient"
             session["account_name"] = user["full_name"]
+            log_audit_action("login_success", resource_type="user", resource_id=str(user["id"]))
             return redirect(url_for("patient_intake"))
         else:
+            log_audit_action("login_failure", resource_type="user", resource_id=username)
             flash("Invalid username or password", "danger")
     return render_template("patient_login.html", t=translations, lang=lang_code)
 
@@ -918,6 +966,7 @@ def patient_intake():
 @app.route("/transcribe", methods=["POST"])
 @login_required
 @patient_required
+@audit_access(resource_type="voice_data", pii=True)
 def transcribe_audio():
     if "audio" not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
@@ -1007,17 +1056,18 @@ def patient_submit():
             "language": selected_language,
         }
 
-        log_audit_action("case_creation", case_id)
+        log_audit_action("case_creation", resource_type="case", resource_id=case_id)
 
         formatted_prompt = SYSTEM_PROMPT.format(language=selected_language)
         prompt = f"{formatted_prompt}\nPATIENT DATA: {json.dumps(raw_data, default=str)}"
 
         ai_analysis = None
+        model_name = "llama3"
         try:
             response = requests.post(
                 OLLAMA_API_URL,
                 json={
-                    "model": "llama3",
+                    "model": model_name,
                     "prompt": prompt,
                     "stream": False,
                     "format": "json",
@@ -1028,27 +1078,38 @@ def patient_submit():
             if "response" in result:
                 ai_text = result["response"]
                 ai_analysis = json.loads(ai_text)
+
+                # Track successful AI interaction
+                log_ai_interaction(
+                    case_id=case_id,
+                    model=model_name,
+                    latency_ms=round((time.time() - start_time) * 1000, 2),
+                    status="success",
+                    prompt_tokens=len(prompt) // 4,  # Rough estimate
+                    completion_tokens=len(ai_text) // 4,
+                )
             else:
                 raise ValueError(f"Unexpected response format from Ollama: {result}")
-        except requests.exceptions.ConnectionError:
-            # [FIX] FORCE FALLBACK: Always load fake analysis if AI is down
-            logging.warning("Ollama unreachable; using fallback analysis.")
+        except (requests.exceptions.ConnectionError, Exception) as e:
+            reason = "ConnectionError" if isinstance(e, requests.exceptions.ConnectionError) else str(e)
+            logging.warning(f"AI Failure: {reason}. Using fallback analysis.")
+
             ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
 
             # CRITICAL: Overwrite the diagnosis with what you typed so your ICD-10 code works!
             user_symptom = request.form.get("symptoms") or "Viral Fever"
             ai_analysis["patient_view"]["primary_diagnosis"] = user_symptom
 
+            # Track fallback AI interaction
+            log_ai_interaction(
+                case_id=case_id,
+                model=model_name,
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+                status="fallback",
+                fallback_reason=reason,
+            )
+
             flash("AI offline. Using simulation mode to save case.", "warning")
-            # We removed the restriction. Now ANY user can proceed without AI.
-        except Exception as e:
-            logging.error(f"Llama 3 Generation or Parsing Failed: {e}")
-            if is_test_case(raw_data):
-                ai_analysis = build_predefined_ai_analysis(selected_language, raw_data)
-                flash("AI processing error. Loaded predefined test analysis.", "warning")
-            else:
-                flash("AI processing failed. Please try again.", "danger")
-                return redirect(url_for("patient_intake"))
         if ai_analysis:
             diag = ai_analysis.get("patient_view", {}).get("primary_diagnosis", "")
             code = get_icd_code(diag)
@@ -1065,9 +1126,7 @@ def patient_submit():
         }
         add_case(case_record)
 
-        log_audit_action("generate_summary", case_id, user_id=doctor_id)
-
-        log_interaction(case_id, raw_data, time.time() - start_time)
+        log_audit_action("generate_summary", resource_type="case", resource_id=case_id)
         return redirect(url_for("patient_result", case_id=case_id))
 
     except Exception as e:
@@ -1079,6 +1138,7 @@ def patient_submit():
 @app.route("/patient/result/<case_id>")
 @login_required
 @patient_required
+@audit_access(resource_type="case", pii=True)
 def patient_result(case_id):
     lang_code = get_language()
     translations = get_translations(lang_code)
@@ -1097,6 +1157,7 @@ def patient_result(case_id):
 
 @app.route("/patient/logout")
 def patient_logout():
+    log_audit_action("logout", resource_type="user", resource_id=str(session.get("user_id")))
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for("landing"))
@@ -1117,8 +1178,10 @@ def doctor_login():
             session["user_id"] = user["id"]
             session["role"] = "doctor"
             session["name"] = user["full_name"]
+            log_audit_action("login_success", resource_type="user", resource_id=str(user["id"]))
             return redirect(url_for("doctor_dashboard"))
         else:
+            log_audit_action("login_failure", resource_type="user", resource_id=username)
             flash("Invalid credentials", "danger")
     return render_template("doctor_login.html", t=translations, lang=lang_code)
 
@@ -1126,6 +1189,7 @@ def doctor_login():
 @app.route("/doctor/dashboard")
 @login_required
 @doctor_required
+@audit_access(resource_type="dashboard")
 def doctor_dashboard():
     lang_code = get_language()
     translations = get_translations(lang_code)
@@ -1178,6 +1242,7 @@ def doctor_dashboard():
 @app.route("/doctor/view/<case_id>")
 @login_required
 @doctor_required
+@audit_access(resource_type="case", pii=True)
 def doctor_view(case_id):
     lang_code = get_language()
     translations = get_translations(lang_code)
@@ -1195,6 +1260,7 @@ def doctor_view(case_id):
 @app.route("/doctor/edit/<case_id>", methods=["GET", "POST"])
 @login_required
 @doctor_required
+@audit_access(resource_type="case", pii=True)
 def doctor_edit(case_id):
     lang_code = get_language()
     translations = get_translations(lang_code)
@@ -1237,6 +1303,7 @@ def doctor_edit(case_id):
 @app.route("/admin/logs")
 @login_required
 @doctor_required
+@audit_access(resource_type="logs")
 def admin_logs():
     lang_code = get_language()
     translations = get_translations(lang_code)
@@ -1245,8 +1312,49 @@ def admin_logs():
     return render_template("admin_logs.html", logs=logs, t=translations, lang=lang_code)
 
 
+@app.route("/admin/mlops")
+@login_required
+@doctor_required
+def mlops_dashboard():
+    """Display AI performance and monitoring dashboard."""
+    lang_code = get_language()
+    translations = get_translations(lang_code)
+
+    # Summary Metrics
+    total_requests = AILog.query.count()
+    success_requests = AILog.query.filter_by(status="success").count()
+    fallback_requests = AILog.query.filter_by(status="fallback").count()
+
+    # Success Rate
+    success_rate = (success_requests / total_requests * 100) if total_requests > 0 else 0
+
+    # Latency Stats
+    avg_latency = db.session.query(db.func.avg(AILog.latency_ms)).scalar() or 0
+
+    # Cost Stats
+    total_cost = db.session.query(db.func.sum(AILog.cost)).scalar() or 0
+
+    # Recent Logs
+    recent_logs = AILog.query.order_by(AILog.timestamp.desc()).limit(20).all()
+
+    return render_template(
+        "mlops_dashboard.html",
+        t=translations,
+        lang=lang_code,
+        metrics={
+            "total": total_requests,
+            "success_rate": round(success_rate, 2),
+            "fallback_count": fallback_requests,
+            "avg_latency": round(avg_latency, 2),
+            "total_cost": round(total_cost, 4),
+        },
+        logs=recent_logs,
+    )
+
+
 @app.route("/doctor/logout")
 def doctor_logout():
+    log_audit_action("logout", resource_type="user", resource_id=str(session.get("user_id")))
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for("landing"))

@@ -63,9 +63,14 @@
     <div class="container my-5">
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h3>System Audit Logs</h3>
-        <button onclick="window.location.reload()" class="btn btn-outline-primary btn-sm">
-          <i class="fas fa-sync-alt me-1"></i> Refresh
-        </button>
+        <div class="btn-group">
+          <a href="/admin/mlops" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-chart-line me-1"></i> MLOps Dashboard
+          </a>
+          <button onclick="window.location.reload()" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-sync-alt me-1"></i> Refresh
+          </button>
+        </div>
       </div>
 
       <div class="card log-card">
@@ -75,7 +80,9 @@
               <tr>
                 <th>User</th>
                 <th>Action</th>
-                <th>Case ID</th>
+                <th>Resource</th>
+                <th>PII</th>
+                <th>IP Address</th>
                 <th>Timestamp</th>
               </tr>
             </thead>
@@ -94,34 +101,38 @@
                   </div>
                 </td>
                 <td>
-                  {% if log.action == 'case_creation' %}
+                  {% if log.action.startswith('access_') %}
+                  <span class="action-badge badge-summary"><i class="fas fa-eye me-1"></i> {{ log.action }}</span>
+                  {% elif log.action == 'case_creation' %}
                   <span class="action-badge badge-creation"><i class="fas fa-plus-circle me-1"></i> Create Case</span>
                   {% elif log.action == 'generate_summary' %}
                   <span class="action-badge badge-summary"><i class="fas fa-magic me-1"></i> Generate Summary</span>
-                  {% elif log.action == 'edit_case' %}
-                  <span class="action-badge badge-edit"><i class="fas fa-edit me-1"></i> Edit Case</span>
                   {% else %}
-                  <span class="badge bg-secondary">{{ log.action }}</span>
+                  <span class="action-badge bg-light text-dark border">{{ log.action }}</span>
                   {% endif %}
                 </td>
                 <td>
-                  {% if log.case_id %}
-                  <a href="{{ url_for('doctor_view', case_id=log.case_id) }}" class="text-decoration-none">
-                    <code>{{ log.case_id }}</code>
-                  </a>
+                  {% if log.resource_type %}
+                  <small class="text-muted">{{ log.resource_type }}:</small> 
+                  <code>{{ log.resource_id or 'N/A' }}</code>
                   {% else %}
                   <span class="text-muted">N/A</span>
                   {% endif %}
                 </td>
                 <td>
-                  <div class="text-dark">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
-                  <small class="text-muted">{{ log.timestamp.strftime('%A') }}</small>
+                  {% if log.pii_accessed %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle">YES</span>
+                  {% else %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">NO</span>
+                  {% endif %}
                 </td>
+                <td><small class="text-muted">{{ log.ip_address or 'Unknown' }}</small></td>
+                <td><small>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</small></td>
               </tr>
               {% endfor %}
               {% if not logs %}
               <tr>
-                <td colspan="4" class="text-center py-5 text-muted">
+                <td colspan="6" class="text-center py-5 text-muted">
                   <i class="fas fa-info-circle me-2"></i> No audit logs found.
                 </td>
               </tr>
