@@ -33,7 +33,7 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
 
       - name: Run mypy type checking
-        run: mypy app.py utils/ --config-file pyproject.toml
+        run: mypy app/ utils/ --config-file pyproject.toml
 
   test:
     name: Run Tests
@@ -84,7 +84,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest tests/ -v --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=90
+          pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
