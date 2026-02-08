@@ -16,7 +16,6 @@ def ratelimit_handler(e: Exception):
     return redirect(request.referrer or url_for("auth.landing"))
 
 def load_translations(app_root: str) -> None:
-    global TRANSLATIONS
     translations_dir = os.path.join(os.path.dirname(app_root), "translations")
     for lang_code in ["en", "hi"]:
         lang_file = os.path.join(translations_dir, f"{lang_code}.json")
