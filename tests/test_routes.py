@@ -1,6 +1,6 @@
 """
 from __future__ import annotations
-Tests for Flask routes in app.py.
+Tests for Flask routes in the app package.
 """
 
 from typing import Any

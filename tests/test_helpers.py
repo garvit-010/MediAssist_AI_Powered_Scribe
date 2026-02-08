@@ -8,7 +8,7 @@ from app.utils import get_all_doctors
 from app.utils import get_user_by_id
 from app.utils import get_user_by_username
 """
-Tests for helper functions in app.py.
+Tests for helper functions in app/utils.py.
 """
 
 from typing import Any
