@@ -1,5 +1,6 @@
 import pytest
-from app import AuditLog, AILog, User, Case
+from app.utils import audit_access
+from app.models import AuditLog, AILog, User, Case
 from datetime import datetime
 
 def test_audit_logging_on_access(client, app, db_session):
@@ -91,7 +92,7 @@ def test_pii_access_audit(client, app, db_session):
 
 def test_ai_monitoring_logs(client, app, db_session):
     """Test that AI interactions are logged correctly for MLOps."""
-    from app import log_ai_interaction
+    from app.services.ai_service import log_ai_interaction
     
     with app.app_context():
         log_ai_interaction(
@@ -114,7 +115,7 @@ def test_ai_monitoring_logs(client, app, db_session):
 def test_mlops_dashboard_metrics(client, app, db_session):
     """Test that the MLOps dashboard displays correct metrics."""
     from werkzeug.security import generate_password_hash
-    from app import AILog
+    from app.models import AILog
     
     with app.app_context():
         # Setup doctor

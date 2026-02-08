@@ -1,7 +1,7 @@
 """
+from __future__ import annotations
 Pytest configuration and shared fixtures for MediAssist tests.
 """
-from __future__ import annotations
 
 import os
 import sys
@@ -37,8 +37,10 @@ def app(mock_whisper: MagicMock) -> Generator[Flask, None, None]:
     """Create application for testing with in-memory SQLite database."""
     # Import here to ensure mock is applied
     with patch("whisper.load_model", return_value=mock_whisper):
-        from app import app as flask_app, db
+        from app import create_app
+        from app.extensions import db
 
+        flask_app = create_app()
         flask_app.config.update({
             "TESTING": True,
             "WTF_CSRF_ENABLED": False,
@@ -63,7 +65,7 @@ def client(app: Flask) -> FlaskClient:
 @pytest.fixture(scope="function")
 def db(app: Flask) -> Generator[Any, None, None]:
     """Provide the database object for tests."""
-    from app import db as _db
+    from app.extensions import db as _db
     with app.app_context():
         yield _db
 
@@ -71,7 +73,7 @@ def db(app: Flask) -> Generator[Any, None, None]:
 @pytest.fixture(scope="function")
 def db_session(app: Flask) -> Generator[Any, None, None]:
     """Provide a transactional database session for tests."""
-    from app import db
+    from app.extensions import db
     
     with app.app_context():
         connection = db.engine.connect()
@@ -167,7 +169,8 @@ def authenticated_patient_session(
     client: FlaskClient, app: Flask, sample_user_data: dict[str, Any]
 ) -> Generator[FlaskClient, None, None]:
     """Create a client with an authenticated patient session."""
-    from app import db, User
+    from app.extensions import db
+    from app.models import User
     from werkzeug.security import generate_password_hash
 
     with app.app_context():
@@ -194,7 +197,8 @@ def authenticated_patient(
     client: FlaskClient, app: Flask, sample_user_data: dict[str, Any]
 ) -> Generator[Any, None, None]:
     """Create and return an authenticated patient user."""
-    from app import db, User
+    from app.extensions import db
+    from app.models import User
     from werkzeug.security import generate_password_hash
 
     with app.app_context():
@@ -221,7 +225,8 @@ def authenticated_doctor(
     client: FlaskClient, app: Flask, sample_doctor_data: dict[str, Any]
 ) -> Generator[Any, None, None]:
     """Create and return an authenticated doctor user."""
-    from app import db, User
+    from app.extensions import db
+    from app.models import User
     from werkzeug.security import generate_password_hash
 
     with app.app_context():
@@ -250,7 +255,8 @@ def authenticated_doctor_session(
     client: FlaskClient, app: Flask, sample_doctor_data: dict[str, Any]
 ) -> Generator[FlaskClient, None, None]:
     """Create a client with an authenticated doctor session."""
-    from app import db, User
+    from app.extensions import db
+    from app.models import User
     from werkzeug.security import generate_password_hash
 
     with app.app_context():

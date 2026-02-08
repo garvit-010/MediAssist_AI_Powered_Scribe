@@ -1,14 +1,14 @@
 <!-- Language Toggle Component -->
 <div class="language-toggle">
   <a
-    href="/set_language/en"
+    href="{{ url_for('auth.set_language', lang_code='en') }}"
     class="lang-btn {% if lang == 'en' %}active{% endif %}"
     title="English"
   >
     🇬🇧 EN
   </a>
   <a
-    href="/set_language/hi"
+    href="{{ url_for('auth.set_language', lang_code='hi') }}"
     class="lang-btn {% if lang == 'hi' %}active{% endif %}"
     title="हिन्दी"
   >

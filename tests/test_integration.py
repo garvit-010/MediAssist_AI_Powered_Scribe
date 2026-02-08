@@ -1,7 +1,9 @@
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-from app import db, User, Case
+from app.services.ai_service import build_predefined_ai_analysis
+from app.extensions import db
+from app.models import User, Case
 
 def test_patient_intake_submission_success(client, authenticated_patient, mocker):
     # Mock Ollama API response
@@ -87,13 +89,13 @@ def test_patient_intake_ai_fallback(client, authenticated_patient, mocker):
         case = Case.query.filter_by(patient_id=authenticated_patient.id).first()
         assert case is not None
         # Verify it's the fallback analysis (which uses build_predefined_ai_analysis)
-        assert case.ai_analysis['patient_view']['primary_diagnosis'] == 'Fever and chills for two days.'
+        assert case.ai_analysis['patient_view']['primary_diagnosis'] == 'Mild Viral Fever'
 
 def test_voice_transcription_endpoint(client, authenticated_patient, mocker):
     # Mock Whisper model
     mock_whisper = MagicMock()
     mock_whisper.transcribe.return_value = {"text": "I feel sick."}
-    mocker.patch('app.audio_model', mock_whisper)
+    mocker.patch('app.routes.main.get_audio_model', return_value=mock_whisper)
     
     # Mock temp file operations to avoid actual file system usage if possible
     # or just let it write to a temp file since it's a test

@@ -194,14 +194,14 @@
         </a>
         <div class="d-flex gap-2">
           <a
-            href="{{ url_for('doctor_edit', case_id=case.id) }}"
+            href="{{ url_for('doctor.doctor_edit', case_id=case.id) }}"
             class="btn btn-outline-primary"
           >
             <i class="fas fa-edit me-2"></i>Edit Case
           </a>
           
           <a 
-            href="{{ url_for('download_pdf', case_id=case.id) }}" 
+            href="{{ url_for('doctor.download_pdf', case_id=case.id) }}" 
             class="btn btn-danger"
             title="Download Watermarked PDF"
           >
@@ -236,7 +236,7 @@
         </div>
         <div class="d-flex gap-2">
           <a
-            href="{{ url_for('doctor_edit', case_id=case.id) }}"
+            href="{{ url_for('doctor.doctor_edit', case_id=case.id) }}"
             class="btn btn-outline-primary"
           >
             <i class="fas fa-edit me-2"></i>Edit Case

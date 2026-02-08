@@ -1,7 +1,7 @@
 """
+from __future__ import annotations
 Tests for the database migration utility.
 """
-from __future__ import annotations
 
 import csv
 import json
@@ -98,7 +98,8 @@ class TestMigrateDb:
         # This test would require modifying migrate_db.py to accept
         # a directory parameter. For now, we test the structure.
         with app.app_context():
-            from app import db, User
+            from app.extensions import db
+            from app.models import User
 
             # Test that the database can be created
             db.create_all()
@@ -109,7 +110,7 @@ class TestMigrateDb:
     def test_migration_without_csv_files(self, app: Flask) -> None:
         """Test migration when CSV files don't exist."""
         with app.app_context():
-            from app import db
+            from app.extensions import db
 
             # Should not raise errors when files don't exist
             db.create_all()
@@ -141,7 +142,8 @@ class TestDatabaseCreation:
     def test_all_tables_created(self, app: Flask) -> None:
         """Test that all required tables are created."""
         with app.app_context():
-            from app import db, User, Case, ClinicalLog, AuditLog
+            from app.extensions import db
+            from app.models import User, Case, ClinicalLog, AuditLog
 
             db.create_all()
 
@@ -153,7 +155,8 @@ class TestDatabaseCreation:
 
     def test_foreign_key_relationships(self, app: Flask) -> None:
         """Test that foreign key relationships are set up correctly."""
-        from app import db, User, Case
+        from app.extensions import db
+        from app.models import User, Case
         from werkzeug.security import generate_password_hash
 
         with app.app_context():

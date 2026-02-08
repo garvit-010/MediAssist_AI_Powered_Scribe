@@ -1,11 +1,11 @@
 import pytest
-from app import User, Case, EncryptedString
+from app.models import User, Case, EncryptedString
 from cryptography.fernet import Fernet
 import os
 
 def test_encryption_decryption(app, db_session):
     with app.app_context():
-        from app import db
+        from app.extensions import db
         # cipher_suite is now initialized in conftest.py
         user = User(
             username='secret_user',

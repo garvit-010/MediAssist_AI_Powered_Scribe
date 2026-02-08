@@ -1,7 +1,11 @@
+from __future__ import annotations
+from app.utils import doctor_required
+from app.utils import patient_required
+from app.utils import login_required
+from app.services.ai_service import log_ai_interaction
 """
 Tests for decorator functions and PDF generation.
 """
-from __future__ import annotations
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -24,7 +28,8 @@ class TestLoginRequiredDecorator:
         self, authenticated_patient_session: FlaskClient, app: Flask
     ) -> None:
         """Test that authenticated users can access protected routes."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -57,7 +62,8 @@ class TestPatientRequiredDecorator:
         self, authenticated_patient_session: FlaskClient, app: Flask
     ) -> None:
         """Test that patients can access patient routes."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -100,7 +106,7 @@ class TestPDFReport:
     def test_pdf_report_header(self, app: Flask) -> None:
         """Test that PDF report header is generated correctly."""
         with app.app_context():
-            from app import PDFReport
+            from app.services.pdf_service import PDFReport
 
             pdf = PDFReport()
             pdf.add_page()
@@ -110,7 +116,7 @@ class TestPDFReport:
     def test_pdf_report_footer(self, app: Flask) -> None:
         """Test that PDF report footer is generated correctly."""
         with app.app_context():
-            from app import PDFReport
+            from app.services.pdf_service import PDFReport
 
             pdf = PDFReport()
             pdf.add_page()
@@ -121,7 +127,7 @@ class TestPDFReport:
     def test_pdf_chapter_title(self, app: Flask) -> None:
         """Test that chapter title is rendered correctly."""
         with app.app_context():
-            from app import PDFReport
+            from app.services.pdf_service import PDFReport
 
             pdf = PDFReport()
             pdf.add_page()
@@ -132,7 +138,7 @@ class TestPDFReport:
     def test_pdf_chapter_body(self, app: Flask) -> None:
         """Test that chapter body is rendered correctly."""
         with app.app_context():
-            from app import PDFReport
+            from app.services.pdf_service import PDFReport
 
             pdf = PDFReport()
             pdf.add_page()
@@ -147,7 +153,8 @@ class TestLogAIInteraction:
     def test_log_ai_interaction_creates_entry(self, app: Flask) -> None:
         """Test that log_ai_interaction creates an AI log entry."""
         with app.app_context():
-            from app import log_ai_interaction, AILog, db
+            from app.extensions import db
+            from app.models import AILog
 
             # Clear existing logs
             AILog.query.delete()
@@ -175,7 +182,9 @@ class TestLogAuditAction:
 
     def test_log_audit_action_creates_entry(self, app: Flask) -> None:
         """Test that log_audit_action creates an audit log entry."""
-        from app import db, User, log_audit_action, AuditLog
+        from app.extensions import db
+        from app.models import User, AuditLog
+        from app.utils import log_audit_action
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -211,7 +220,8 @@ class TestLogAuditAction:
     ) -> None:
         """Test log_audit_action uses session user_id when not provided."""
         with app.app_context():
-            from app import log_audit_action, AuditLog, db
+            from app.extensions import db
+            from app.models import AuditLog
 
             AuditLog.query.delete()
             db.session.commit()
@@ -221,6 +231,7 @@ class TestLogAuditAction:
                 authenticated_doctor_session.get("/doctor/dashboard")
                 # Now log action without explicit user_id
                 from flask import session
+                from app.utils import log_audit_action
 
                 if "user_id" in session:
                     result = log_audit_action(action="session_test")

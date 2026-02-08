@@ -1,15 +1,16 @@
 import pytest
-from app import User, Case, db
+from app.extensions import db
+from app.models import User, Case
 from flask import session
 
 def test_get_user_by_username_none(app):
     with app.app_context():
-        from app import get_user_by_username
+        from app.utils import get_user_by_username
         assert get_user_by_username(None) is None
 
 def test_get_user_by_id_invalid(app):
     with app.app_context():
-        from app import get_user_by_id
+        from app.utils import get_user_by_id
         assert get_user_by_id("invalid") is None
         assert get_user_by_id(None) is None
 
@@ -42,7 +43,7 @@ def test_doctor_login_user_not_found(client):
 
 def test_get_doctor_cases_not_found(app):
     with app.app_context():
-        from app import get_cases_for_doctor
+        from app.utils import get_cases_for_doctor
         # Assuming ID 99999 doesn't exist
         assert get_cases_for_doctor(99999) == []
 
@@ -96,7 +97,7 @@ def test_patient_result_access_denied(client, app, db_session):
             sess['user_id'] = p2.id
             sess['role'] = 'patient'
         response = client.get('/patient/result/P1_CASE', follow_redirects=True)
-        assert "Access Denied" in response.data.decode()
+        assert "Case not found or access denied." in response.data.decode()
 
 def test_transcribe_audio_no_model(client, app, db_session, mocker):
     from werkzeug.security import generate_password_hash
@@ -108,7 +109,7 @@ def test_transcribe_audio_no_model(client, app, db_session, mocker):
             sess['user_id'] = patient.id
             sess['role'] = 'patient'
             
-        mocker.patch('app.audio_model', None)
+        mocker.patch('app.routes.main.get_audio_model', return_value=None)
         import io
         data = {'audio': (io.BytesIO(b"fake audio"), 'test.webm')}
         response = client.post('/transcribe', data=data, content_type='multipart/form-data')
@@ -136,7 +137,7 @@ def test_set_language_invalid(client):
     assert response.status_code == 200
 
 def test_ratelimit_handler(client):
-    from app import ratelimit_handler
-    with client.application.app_context():
+    from app.utils import ratelimit_handler
+    with client.application.test_request_context():
         response = ratelimit_handler(Exception("limit"))
         assert response.status_code == 302

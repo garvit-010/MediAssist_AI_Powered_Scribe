@@ -1,7 +1,15 @@
+from __future__ import annotations
+from app.utils import TRANSLATIONS
+from app.utils import get_cases_for_patient
+from app.utils import get_cases_for_doctor
+from app.utils import get_case_by_id
+from app.utils import add_case
+from app.utils import get_all_doctors
+from app.utils import get_user_by_id
+from app.utils import get_user_by_username
 """
 Tests for helper functions in app.py.
 """
-from __future__ import annotations
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -16,7 +24,7 @@ class TestHighlightEntities:
     def test_highlight_medications(self, app: Flask) -> None:
         """Test that medications are highlighted correctly."""
         with app.app_context():
-            from app import highlight_entities
+            from app.services.medical_service import highlight_entities
 
             text = "Patient was prescribed Paracetamol and Ibuprofen."
             result = highlight_entities(text)
@@ -28,7 +36,7 @@ class TestHighlightEntities:
     def test_highlight_conditions(self, app: Flask) -> None:
         """Test that medical conditions are highlighted correctly."""
         with app.app_context():
-            from app import highlight_entities
+            from app.services.medical_service import highlight_entities
 
             text = "Patient diagnosed with Diabetes and Hypertension."
             result = highlight_entities(text)
@@ -40,7 +48,7 @@ class TestHighlightEntities:
     def test_highlight_dosages(self, app: Flask) -> None:
         """Test that dosages are highlighted correctly."""
         with app.app_context():
-            from app import highlight_entities
+            from app.services.medical_service import highlight_entities
 
             text = "Take 500 mg twice daily and 10 ml syrup."
             result = highlight_entities(text)
@@ -51,7 +59,7 @@ class TestHighlightEntities:
     def test_empty_text_handling(self, app: Flask) -> None:
         """Test that empty strings are handled correctly."""
         with app.app_context():
-            from app import highlight_entities
+            from app.services.medical_service import highlight_entities
 
             assert highlight_entities("") == ""
             assert highlight_entities(None) == ""  # type: ignore[arg-type]
@@ -59,7 +67,7 @@ class TestHighlightEntities:
     def test_case_insensitive_matching(self, app: Flask) -> None:
         """Test that entity matching is case insensitive."""
         with app.app_context():
-            from app import highlight_entities
+            from app.services.medical_service import highlight_entities
 
             result = highlight_entities("ASPIRIN and aspirin should both match")
             # Both occurrences should be highlighted
@@ -72,7 +80,7 @@ class TestGetIcdCode:
     def test_direct_match(self, app: Flask) -> None:
         """Test direct matching of conditions to ICD codes."""
         with app.app_context():
-            from app import get_icd_code
+            from app.services.medical_service import get_icd_code
 
             assert get_icd_code("fever") == "R50.9"
             assert get_icd_code("migraine") == "G43.9"
@@ -81,7 +89,7 @@ class TestGetIcdCode:
     def test_case_insensitive(self, app: Flask) -> None:
         """Test that matching is case insensitive."""
         with app.app_context():
-            from app import get_icd_code
+            from app.services.medical_service import get_icd_code
 
             assert get_icd_code("FEVER") == "R50.9"
             assert get_icd_code("Migraine") == "G43.9"
@@ -90,7 +98,7 @@ class TestGetIcdCode:
     def test_partial_match(self, app: Flask) -> None:
         """Test matching when condition is part of larger text."""
         with app.app_context():
-            from app import get_icd_code
+            from app.services.medical_service import get_icd_code
 
             assert get_icd_code("patient has fever symptoms") == "R50.9"
             assert get_icd_code("chronic headache") == "R51"
@@ -98,7 +106,7 @@ class TestGetIcdCode:
     def test_keyword_fallback(self, app: Flask) -> None:
         """Test fallback keyword matching."""
         with app.app_context():
-            from app import get_icd_code
+            from app.services.medical_service import get_icd_code
 
             assert get_icd_code("severe pain syndrome") == "R52"
             assert get_icd_code("viral disease") == "B34.9"
@@ -107,14 +115,14 @@ class TestGetIcdCode:
     def test_unspecified_return(self, app: Flask) -> None:
         """Test that unknown conditions return 'Unspecified'."""
         with app.app_context():
-            from app import get_icd_code
+            from app.services.medical_service import get_icd_code
 
             assert get_icd_code("xyz unknown condition") == "Unspecified"
 
     def test_none_handling(self, app: Flask) -> None:
         """Test that None/empty input is handled correctly."""
         with app.app_context():
-            from app import get_icd_code
+            from app.services.medical_service import get_icd_code
 
             assert get_icd_code(None) == "Not Found"  # type: ignore[arg-type]
             assert get_icd_code("") == "Not Found"
@@ -126,7 +134,7 @@ class TestIsTestCase:
     def test_valid_test_case(self, app: Flask) -> None:
         """Test detection of the predefined test fixture."""
         with app.app_context():
-            from app import is_test_case
+            from app.utils import is_test_case
 
             test_data = {
                 "patient_name": "John Doe",
@@ -144,7 +152,7 @@ class TestIsTestCase:
     def test_non_test_case(self, app: Flask) -> None:
         """Test that non-test data returns False."""
         with app.app_context():
-            from app import is_test_case
+            from app.utils import is_test_case
 
             real_data = {
                 "patient_name": "Real Patient",
@@ -166,7 +174,7 @@ class TestCleanMedicalText:
     def test_remove_brackets(self, app: Flask) -> None:
         """Test removal of [** and **] markers."""
         with app.app_context():
-            from app import clean_medical_text
+            from app.services.medical_service import clean_medical_text
 
             text = "[**Patient**] was seen at [**Hospital**]"
             result = clean_medical_text(text)
@@ -176,7 +184,7 @@ class TestCleanMedicalText:
     def test_bold_conversion(self, app: Flask) -> None:
         """Test conversion of **text** to <strong>text</strong>."""
         with app.app_context():
-            from app import clean_medical_text
+            from app.services.medical_service import clean_medical_text
 
             text = "This is **important** information"
             result = clean_medical_text(text)
@@ -185,7 +193,7 @@ class TestCleanMedicalText:
     def test_empty_handling(self, app: Flask) -> None:
         """Test that empty/None values are handled correctly."""
         with app.app_context():
-            from app import clean_medical_text
+            from app.services.medical_service import clean_medical_text
 
             assert clean_medical_text("") == ""
             assert clean_medical_text(None) == ""  # type: ignore[arg-type]
@@ -197,7 +205,7 @@ class TestGetLanguage:
     def test_default_language(self, app: Flask, client: Any) -> None:
         """Test that default language is English."""
         with app.app_context():
-            from app import get_language
+            from app.utils import get_language
 
             with client.session_transaction() as sess:
                 sess.clear()
@@ -215,7 +223,7 @@ class TestGetTranslations:
     def test_english_translations(self, app: Flask) -> None:
         """Test retrieving English translations."""
         with app.app_context():
-            from app import get_translations
+            from app.utils import get_translations
 
             translations = get_translations("en")
             assert isinstance(translations, dict)
@@ -223,7 +231,7 @@ class TestGetTranslations:
     def test_hindi_translations(self, app: Flask) -> None:
         """Test retrieving Hindi translations."""
         with app.app_context():
-            from app import get_translations
+            from app.utils import get_translations
 
             translations = get_translations("hi")
             assert isinstance(translations, dict)
@@ -231,7 +239,7 @@ class TestGetTranslations:
     def test_invalid_language_fallback(self, app: Flask) -> None:
         """Test that invalid language falls back to English."""
         with app.app_context():
-            from app import get_translations, TRANSLATIONS
+            from app.utils import get_translations, TRANSLATIONS
 
             translations = get_translations("invalid")
             # Should return English translations as fallback
@@ -244,7 +252,7 @@ class TestBuildPredefinedAiAnalysis:
     def test_english_analysis(self, app: Flask) -> None:
         """Test building AI analysis in English."""
         with app.app_context():
-            from app import build_predefined_ai_analysis
+            from app.services.ai_service import build_predefined_ai_analysis
 
             raw_data = {"patient_name": "John Doe"}
             result = build_predefined_ai_analysis("English", raw_data)
@@ -257,7 +265,7 @@ class TestBuildPredefinedAiAnalysis:
     def test_hindi_analysis(self, app: Flask) -> None:
         """Test building AI analysis in Hindi."""
         with app.app_context():
-            from app import build_predefined_ai_analysis
+            from app.services.ai_service import build_predefined_ai_analysis
 
             raw_data = {"patient_name": "Test"}
             result = build_predefined_ai_analysis("Hindi", raw_data)
@@ -269,7 +277,7 @@ class TestBuildPredefinedAiAnalysis:
     def test_structure_completeness(self, app: Flask) -> None:
         """Test that all required fields are present in the analysis."""
         with app.app_context():
-            from app import build_predefined_ai_analysis
+            from app.services.ai_service import build_predefined_ai_analysis
 
             result = build_predefined_ai_analysis("English", {})
 
@@ -295,7 +303,8 @@ class TestUserHelpers:
 
     def test_get_user_by_username(self, app: Flask) -> None:
         """Test retrieving user by username."""
-        from app import db, User, get_user_by_username
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -317,7 +326,8 @@ class TestUserHelpers:
 
     def test_get_user_by_id(self, app: Flask) -> None:
         """Test retrieving user by ID."""
-        from app import db, User, get_user_by_id
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -340,7 +350,8 @@ class TestUserHelpers:
 
     def test_get_all_doctors(self, app: Flask) -> None:
         """Test retrieving all doctors."""
-        from app import db, User, get_all_doctors
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -380,7 +391,8 @@ class TestCaseHelpers:
         self, app: Flask, sample_case_data: dict[str, Any]
     ) -> None:
         """Test adding and retrieving a case."""
-        from app import db, User, add_case, get_case_by_id
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -418,7 +430,8 @@ class TestCaseHelpers:
         self, app: Flask, sample_case_data: dict[str, Any]
     ) -> None:
         """Test retrieving cases for a specific doctor."""
-        from app import db, User, Case, get_cases_for_doctor
+        from app.extensions import db
+        from app.models import User, Case
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -457,7 +470,8 @@ class TestCaseHelpers:
         self, app: Flask, sample_case_data: dict[str, Any]
     ) -> None:
         """Test retrieving cases for a specific patient."""
-        from app import db, User, Case, get_cases_for_patient
+        from app.extensions import db
+        from app.models import User, Case
         from werkzeug.security import generate_password_hash
 
         with app.app_context():

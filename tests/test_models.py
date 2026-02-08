@@ -1,7 +1,9 @@
+from __future__ import annotations
+from app.models import EncryptedString
+from app.models import ClinicalLog
 """
 Tests for database models: User, Case, ClinicalLog, AuditLog, EncryptedString.
 """
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
@@ -15,7 +17,8 @@ class TestUserModel:
 
     def test_create_user(self, app: Flask) -> None:
         """Test creating a new user."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -36,7 +39,8 @@ class TestUserModel:
 
     def test_user_to_dict(self, app: Flask) -> None:
         """Test User.to_dict() method returns correct structure."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -59,7 +63,8 @@ class TestUserModel:
 
     def test_create_doctor_with_specialty(self, app: Flask) -> None:
         """Test creating a doctor with specialty and unique ID."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -87,7 +92,8 @@ class TestCaseModel:
         self, app: Flask, sample_case_data: dict[str, Any]
     ) -> None:
         """Test creating a new case."""
-        from app import db, Case, User
+        from app.extensions import db
+        from app.models import Case, User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -129,7 +135,8 @@ class TestCaseModel:
         self, app: Flask, sample_case_data: dict[str, Any]
     ) -> None:
         """Test Case.to_dict() method returns correct structure."""
-        from app import db, Case, User
+        from app.extensions import db
+        from app.models import Case, User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -173,7 +180,8 @@ class TestAILogModel:
 
     def test_create_ai_log(self, app: Flask) -> None:
         """Test creating an AI log entry."""
-        from app import db, AILog
+        from app.extensions import db
+        from app.models import AILog
 
         with app.app_context():
             log = AILog(
@@ -202,7 +210,8 @@ class TestAuditLogModel:
 
     def test_create_audit_log(self, app: Flask) -> None:
         """Test creating an audit log entry."""
-        from app import db, AuditLog, User
+        from app.extensions import db
+        from app.models import AuditLog, User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -237,7 +246,8 @@ class TestEncryptedString:
 
     def test_encryption_decryption(self, app: Flask) -> None:
         """Test that data is encrypted when stored and decrypted when retrieved."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         sensitive_name = "Super Secret Patient Name"
@@ -259,7 +269,8 @@ class TestEncryptedString:
 
     def test_none_value_handling(self, app: Flask) -> None:
         """Test that None values are handled correctly."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():

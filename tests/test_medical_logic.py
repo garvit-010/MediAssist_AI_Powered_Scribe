@@ -1,5 +1,5 @@
 import pytest
-from app import highlight_entities, get_icd_code, clean_medical_text
+from app.services.medical_service import highlight_entities, get_icd_code, clean_medical_text
 
 def test_highlight_entities_medication():
     text = "The patient took Paracetamol."

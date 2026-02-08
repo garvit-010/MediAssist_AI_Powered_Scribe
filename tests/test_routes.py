@@ -1,7 +1,7 @@
 """
+from __future__ import annotations
 Tests for Flask routes in app.py.
 """
-from __future__ import annotations
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -50,7 +50,8 @@ class TestPatientLoginRoute:
 
     def test_patient_login_success(self, client: FlaskClient, app: Flask) -> None:
         """Test successful patient login."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -95,7 +96,8 @@ class TestDoctorLoginRoute:
 
     def test_doctor_login_success(self, client: FlaskClient, app: Flask) -> None:
         """Test successful doctor login."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -130,7 +132,8 @@ class TestPatientIntakeRoute:
         self, authenticated_patient_session: FlaskClient, app: Flask
     ) -> None:
         """Test that intake page loads for authenticated patients."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
@@ -162,7 +165,8 @@ class TestPatientSubmitRoute:
         self, authenticated_patient_session: FlaskClient, app: Flask
     ) -> None:
         """Test validation for short symptoms."""
-        from app import db, User
+        from app.extensions import db
+        from app.models import User
         from werkzeug.security import generate_password_hash
 
         with app.app_context():
