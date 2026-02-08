@@ -252,6 +252,59 @@ class TestSetLanguageRoute:
                 assert sess.get("language") in ["en", None]
 
 
+    def test_register_page_loads(self, client: FlaskClient, app: Flask) -> None:
+        """Test that registration page loads."""
+        with app.app_context():
+            response = client.get("/register")
+            assert response.status_code == 200
+
+    def test_register_success(self, client: FlaskClient, app: Flask) -> None:
+        """Test successful user registration."""
+        with app.app_context():
+            response = client.post(
+                "/register",
+                data={
+                    "username": "newuser",
+                    "password": "newpassword123",
+                    "role": "patient",
+                    "full_name": "New User"
+                },
+                follow_redirects=True
+            )
+            assert response.status_code == 200
+            from app.models import User
+            user = User.query.filter_by(username="newuser").first()
+            assert user is not None
+            assert user.role == "patient"
+
+    def test_register_existing_user(self, client: FlaskClient, app: Flask) -> None:
+        """Test registration with existing username."""
+        from app.extensions import db
+        from app.models import User
+        from werkzeug.security import generate_password_hash
+
+        with app.app_context():
+            existing_user = User(
+                username="existinguser",
+                password_hash=generate_password_hash("password"),
+                role="patient",
+                full_name="Existing User"
+            )
+            db.session.add(existing_user)
+            db.session.commit()
+
+            response = client.post(
+                "/register",
+                data={
+                    "username": "existinguser",
+                    "password": "newpassword123",
+                    "role": "patient",
+                    "full_name": "New User"
+                },
+                follow_redirects=True
+            )
+            assert "Username already exists" in response.get_data(as_text=True)
+
 class TestLogoutRoutes:
     """Tests for logout functionality."""
 
